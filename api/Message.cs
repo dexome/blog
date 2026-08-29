@@ -21,9 +21,7 @@ namespace api
             logger.LogInformation("C# HTTP trigger function processed a request.");
 
             string name = HttpUtility.ParseQueryString(req.Url.Query)["name"];
-            Console.WriteLine("TEST");
 
-            Console.WriteLine(req.Body);
             if (req.Body != System.IO.Stream.Null)
             {
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
