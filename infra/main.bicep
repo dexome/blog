@@ -76,6 +76,93 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
   }
 }
 
+// One-click visitor dashboard. Placeholder __AI_ID__ is swapped for the App
+// Insights resource id so the queries resolve when the workbook is opened.
+var workbookData = '''
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": { "json": "# Blog Visitor Analytics\n\nFirst-party page visits collected via `/api/track` into Application Insights." },
+      "name": "title"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customEvents | where name == 'PageVisit' | summarize Visits = count() by bin(timestamp, 1h) | order by timestamp asc",
+        "size": 0,
+        "title": "Visits over time",
+        "timeContext": { "durationMs": 604800000 },
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "timechart"
+      },
+      "name": "visits-over-time"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customEvents | where name == 'PageVisit' | summarize UniqueVisitors = dcount(tostring(customDimensions.clientIp)) by bin(timestamp, 1d) | order by timestamp asc",
+        "size": 0,
+        "title": "Unique visitors per day",
+        "timeContext": { "durationMs": 2592000000 },
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "barchart"
+      },
+      "name": "unique-visitors"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customEvents | where name == 'PageVisit' | summarize Hits = count() by Path = tostring(customDimensions.path) | top 20 by Hits",
+        "size": 0,
+        "title": "Top pages",
+        "timeContext": { "durationMs": 604800000 },
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "name": "top-pages"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "customEvents | where name == 'PageVisit' | project timestamp, IP = tostring(customDimensions.clientIp), Path = tostring(customDimensions.path), PageTitle = tostring(customDimensions['title']), UserAgent = tostring(customDimensions.userAgent) | order by timestamp desc | take 100",
+        "size": 0,
+        "title": "Recent visits",
+        "timeContext": { "durationMs": 86400000 },
+        "queryType": 0,
+        "resourceType": "microsoft.insights/components",
+        "visualization": "table"
+      },
+      "name": "recent-visits"
+    }
+  ],
+  "fallbackResourceIds": ["__AI_ID__"],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
+'''
+
+resource visitorWorkbook 'Microsoft.Insights/workbooks@2023-06-01' = {
+  name: guid(resourceGroup().id, appInsightsName, 'visitor-workbook')
+  location: metricsLocation
+  kind: 'shared'
+  properties: {
+    displayName: 'Blog Visitor Analytics'
+    serializedData: replace(workbookData, '__AI_ID__', appInsights.id)
+    version: 'Notebook/1.0'
+    category: 'workbook'
+    sourceId: appInsights.id
+  }
+}
+
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
 output logAnalyticsWorkspaceId string = logAnalytics.id
+output workbookId string = visitorWorkbook.id
