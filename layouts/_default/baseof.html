@@ -30,5 +30,23 @@
             {{- block "right-sidebar" . -}}{{ end }}
         </div>
         {{ partial "footer/include.html" . }}
+        {{ if eq (getenv "HUGO_ENV") "production" | or (eq .Site.Params.env "production") }}
+        <script>
+          (function () {
+            try {
+              var payload = JSON.stringify({
+                path: location.pathname + location.search,
+                title: document.title,
+                referrer: document.referrer
+              });
+              if (navigator.sendBeacon) {
+                navigator.sendBeacon("/api/track", new Blob([payload], { type: "application/json" }));
+              } else {
+                fetch("/api/track", { method: "POST", body: payload, keepalive: true, headers: { "Content-Type": "application/json" } });
+              }
+            } catch (e) { /* analytics must never break the page */ }
+          })();
+        </script>
+        {{ end }}
     </body>
 </html>

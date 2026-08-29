@@ -1,3 +1,55 @@
+# The Dexome blog
+
+Personal blog at [blog.dexome.com](https://blog.dexome.com) — notes from my experiments.
+
+Built with [Hugo](https://gohugo.io) and the [hugo-theme-stack](https://github.com/CaiJimmy/hugo-theme-stack)
+theme, deployed to **Azure Static Web Apps** via GitHub Actions. Comments are powered by
+[Utterances](https://utteranc.es).
+
+## Prerequisites
+
+- [Hugo (extended)](https://gohugo.io/installation/) `>= 0.128.0`
+- [.NET SDK 8.0](https://dotnet.microsoft.com/download) — only needed to work on the `api/` Functions
+- Git (the theme is a submodule)
+
+## Getting started
+
+```bash
+# Clone with the theme submodule
+git clone --recurse-submodules https://github.com/dexome/blog.git
+cd blog
+
+# If you already cloned without submodules
+git submodule update --init --recursive
+
+# Run locally with drafts
+hugo server -D
+```
+
+The site is served at http://localhost:1313.
+
+## Writing a post
+
+```bash
+hugo new post/my-new-post/index.md
+```
+
+Edit the generated file, fill in `description`, `tags`, `categories` and (optionally) a
+`featured_image`, then set `draft: false` when ready to publish.
+
+## Project layout
+
+| Path | Purpose |
+|------|---------|
+| `config.yml` | Hugo site configuration |
+| `content/en/` | Posts and pages (English) |
+| `layouts/` | Custom template overrides and shortcodes |
+| `static/` | Static assets served as-is (css, js, images, verification files) |
+| `assets/` | Pipeline assets processed by Hugo |
+| `api/` | Azure Functions (.NET 8 isolated) deployed alongside the site |
+| `infra/` | Bicep IaC for the Azure resources (Static Web App + analytics) |
+| `themes/hugo-theme-stack/` | Active theme (git submodule) |
+| `.github/workflows/` | Azure Static Web Apps CI/CD |
 
 ## Deployment
 
