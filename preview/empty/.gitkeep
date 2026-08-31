@@ -1,0 +1,2 @@
+# Intentionally empty. Mounted as `layouts` in theme previews so the project's
+# Stack-specific layouts/ do not override the previewed theme's own templates.

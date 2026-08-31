@@ -1,0 +1,8 @@
+<figure class="article-diagram">
+    <pre class="mermaid">
+{{- .Inner | safeHTML -}}
+    </pre>
+    {{- with .Get "caption" }}
+    <figcaption>{{ . }}</figcaption>
+    {{- end }}
+</figure>

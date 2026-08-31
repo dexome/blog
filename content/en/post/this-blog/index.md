@@ -1,8 +1,14 @@
 ---
 date: "2022-01-07T16:01:03+05:30"
-description: ""
+description: How this blog is built and published — Hugo static site generator, Azure Static Web Apps hosting, and a Cloudflare-managed custom domain
 featured_image: ""
-tags: []
+tags:
+- guide
+- hugo
+- azure
+- static-web-apps
+- cloudflare
+- blogging
 title: This Blog
 ---
 Let the first post in this blog be about setting up this blog.

@@ -66,7 +66,7 @@ Go to "Tunnels" tab and click "Add Tunnel".
 #### In the "Interface Configuration"
 * Enter "Interface Address" and the CIDR value from config's *Interface* section.
 
-*CIDR act as subnet mask. Read more about it [here]("https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing#Subnet_masks")*.
+*CIDR act as subnet mask. Read more about it [here](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing#Subnet_masks)*.
 
 Save the tunnel configuration by clicking "Save Tunnel".
 

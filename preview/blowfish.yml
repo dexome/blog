@@ -1,0 +1,51 @@
+baseURL: http://localhost:1313/
+languageCode: en-us
+defaultContentLanguage: en
+theme: blowfish
+title: Dexome
+
+# Mount only content + static so the project's Stack-specific layouts/ and
+# assets/ do NOT leak into this preview — Blowfish uses its own templates.
+module:
+  mounts:
+    - source: content/en
+      target: content
+    - source: static
+      target: static
+    - source: preview/empty
+      target: layouts
+
+pagination:
+  pagerSize: 10
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    noClasses: false
+
+params:
+  colorScheme: blowfish
+  defaultAppearance: dark
+  autoSwitchAppearance: true
+  mainSections:
+    - post
+  homepage:
+    layout: profile
+    showRecent: true
+    showRecentItems: 10
+    showMoreLink: true
+    showMoreLinkDest: /post/
+    cardView: true
+  article:
+    showDate: true
+    showReadingTime: true
+    showTableOfContents: true
+    showComments: false
+
+  author:
+    name: dexter
+    links:
+      - github: https://github.com/jahanarun
+      - linkedin: https://www.linkedin.com/in/jahanarun

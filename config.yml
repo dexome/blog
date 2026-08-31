@@ -23,6 +23,9 @@ baseURL: https://blog.dexome.com/
 languageCode: en-us
 defaultContentLanguage: en
 enableRobotsTXT: true
+minify:
+  disableXML: true
+  minifyOutput: true
 sectionPagesMenu: main
 languages:
   en:
@@ -30,7 +33,7 @@ languages:
     weight: 1
     contentDir: content/en
 pagination:
-  pagerSize: 3
+  pagerSize: 10
 sitemap:
   changefreq: weekly
   priority: 0.5
@@ -48,8 +51,6 @@ params:
   background_color_class: bg-black
   featured_image: ""
   recent_posts_number: 2
-  custom_css:
-    - css/syntax-monokai.css
   colorScheme:
     # Display toggle
     toggle: true
