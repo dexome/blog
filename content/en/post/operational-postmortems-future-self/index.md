@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: The lightweight incident-note habit that preserved exact fixes from my homelab without turning every outage into a formal report
+date: "2026-06-05T00:00:00+05:30"
+description: The short incident-note format I use to keep exact homelab fixes and verification steps
 featured_image: ""
 tags:
 - guide
@@ -8,24 +8,19 @@ tags:
 - postmortem
 - ops
 - workflow
-title: Write the Incident Note Before the Relief Wears Off
-draft: true
+title: How I Write Incident Notes for My Homelab
 ---
 
-The network was back. I could close the terminals, leave the diagrams for later,
-and trust that the final command was still in my shell history.
+I keep short incident notes for problems in my homelab. I normally write them
+after the service is stable and before closing the terminals used during the
+investigation.
 
-That is the exact moment an incident becomes expensive for the second time.
+Shell history can show the commands I ran, but it does not explain which output
+ruled out the firewall, why one repair did not work or which configuration change
+was the permanent fix. By the next day, those details are already harder to write
+down correctly.
 
-Relief erases sequence. By the next morning I remember the broad cause and the
-successful outcome, but not the observation that ruled out the firewall, the
-command that exposed the wrong route, or the failed fix that looked almost
-identical to the real one.
-
-My solution is not a formal postmortem process. It is a short operational note,
-written before closing the incident.
-
-## The note begins with one sentence
+## Start with the symptom, cause and fix
 
 I force the incident into a problem-to-outcome sentence:
 
@@ -33,9 +28,8 @@ I force the incident into a problem-to-outcome sentence:
 > through the Internet bridge; a lower-metric default route through the ingress
 > VLAN restored symmetric routing.
 
-That sentence does three jobs. It gives the symptom, names the cause, and records
-the winning change. Months later, it is enough to decide whether the full note
-is relevant.
+This gives me enough information to decide later whether the complete note is
+related to a new problem.
 
 A weak summary sounds like this:
 
@@ -45,10 +39,10 @@ It is short but cannot route a future investigation. It does not distinguish
 DNS failure, backend reachability, stale ARP, firewall policy, or asymmetric
 routing.
 
-If I cannot write the stronger sentence, I probably have not finished the
-investigation. I may have restored service without understanding why.
+If I can only write “fixed Traefik networking,” I may have restored the service
+without finding the actual cause.
 
-## Write for the next failure, not the incident review
+## The format I use
 
 The useful reader is tired, under time pressure, and staring at a similar but
 not necessarily identical symptom. That reader needs discriminating evidence,
@@ -84,24 +78,22 @@ flowchart TB
 	F --> V[Verification and rollback]
 {{< /mermaid >}}
 
-The sequence is useful even when the note is only 40 lines. Length is not the
-measure. Retrieval value is.
+Most of my notes are short. The important part is keeping the evidence which
+changed the diagnosis.
 
-## A real example: the repair that did not repair
+## Example from Radarr and mergerfs
 
 Radarr could not replace a movie after Copyparty renamed its directory. The
 directory was owned by Copyparty's UID and the shared media group, but group
 write was missing.
 
-The first diagnosis was correct: fix the directory from `2755` to `2775`. The
-first repair was incomplete: I changed only the `btank` backing path. Radarr
-still failed.
+The first diagnosis was correct: change the directory from `2755` to `2775`.
+The first repair was incomplete because I changed only the `btank` backing path.
+Radarr still failed.
 
-That apparent contradiction was the part worth preserving. The visible path was
-a mergerfs union. A duplicate directory under the `btwo` branch still had mode
-`2755`, and mergerfs surfaced that stale metadata. Repairing only the branch
-containing the media file did not guarantee the merged view would expose the
-new permissions.
+The visible path was a mergerfs union. A duplicate directory under the `btwo`
+branch still had mode `2755`, and mergerfs exposed that metadata. Repairing only
+the branch containing the media file was not enough.
 
 A poor incident note would say:
 
@@ -117,10 +109,10 @@ Repair every raw backing branch, never only the merged view, then enforce
 Copyparty chmod_d 775 and chmod_f 664 for future entries.
 ```
 
-The second version prevents the exact recurrence. It records both the one-time
-filesystem repair and the configuration that stops new bad entries.
+The second note records both the existing filesystem repair and the Copyparty
+configuration required for new files and directories.
 
-## Preserve false leads only when they are reusable
+## Failed attempts worth keeping
 
 An incident can contain dozens of checks. Most do not deserve permanent space.
 I keep a failed attempt when it explains a recurring trap:
@@ -132,11 +124,10 @@ I keep a failed attempt when it explains a recurring trap:
 - a synthetic shell respected the umask while the real s6-supervised process
   reset it.
 
-I omit terminal wandering, typos, and checks that added no information. The goal
-is not to prove how hard I worked. It is to save the next person from spending
-time on the same attractive mistake.
+I omit typos and checks which did not add any information. I keep a failed attempt
+when it explains why a reasonable fix did not change the result.
 
-## Capture two timelines
+## Keep the diagnostic sequence
 
 There is the incident timeline: what happened in production. There is also the
 reasoning timeline: which evidence changed the hypothesis.
@@ -156,9 +147,9 @@ flowchart TB
 {{< /mermaid >}}
 
 For future debugging, `packet arrives` and `route lookup selects wrong gateway`
-are more valuable than the wall-clock minute at which each curl ran.
+are more useful than the exact minute when each `curl` command ran.
 
-## Write it before cleanup destroys evidence
+## Write the note before cleaning up
 
 I start the note after service is stable but before deleting scratch files,
 closing logs, or relying on memory. The fastest workflow is:
@@ -166,14 +157,15 @@ closing logs, or relying on memory. The fastest workflow is:
 1. Write the one-line outcome.
 2. Paste only the decisive errors and commands.
 3. Explain the mechanism in plain language.
-4. Separate temporary recovery from the durable fix.
+4. Separate temporary recovery from the permanent fix.
 5. Add verification and rollback.
 6. Remove secrets and irrelevant identifiers.
 7. Link the note from a small topic index.
 
-The note can be refined later. The evidence is harder to reconstruct later.
+I can edit the wording later. Recreating the decisive command output is more
+difficult after the containers, logs and temporary files have changed.
 
-## Recovery is not the same as correction
+## Record the recovery and permanent fix separately
 
 Several incidents taught me to record two fixes explicitly.
 
@@ -185,10 +177,10 @@ Several incidents taught me to record two fixes explicitly.
 | Delete a stuck KV key | Replace TTL presence with timestamp comparison |
 | Manually restart a container | Correct its systemd dependency or health contract |
 
-Without this split, the emergency command becomes folklore and eventually an
-unexplained cron job.
+This prevents a one-time recovery command from being mistaken for the permanent
+configuration change.
 
-## Make the note easy to encounter
+## Add it to the topic index
 
 A folder full of excellent postmortems still fails if nobody knows what is in
 it. I keep a routing index grouped by service. Each note contributes its
@@ -202,11 +194,10 @@ flowchart LR
 	N --> A[Apply prior check or avoid prior mistake]
 {{< /mermaid >}}
 
-Full-text search remains useful for exact error messages. The index answers a
-different question: "Have we already learned something about this class of
-failure?"
+I use full-text search for exact errors. The index helps when the new symptom is
+similar but does not contain the same error message.
 
-## Let old notes be wrong visibly
+## Keep old notes but mark them superseded
 
 Operational knowledge changes. A note may describe a temporary architecture, a
 version-specific bug, or a test later disproved in production.
@@ -220,7 +211,7 @@ incidents, broken links, and notes that should be promoted into stable service
 documentation. A tiny coverage script checks that every dated note appears in
 the index. Humans still decide whether the summaries are true.
 
-## The threshold is simple
+## When I create a note
 
 I write an operational note when at least one of these is true:
 
@@ -232,9 +223,9 @@ I write an operational note when at least one of these is true:
 - the same mistake could affect another service;
 - rollback required knowledge not encoded in the change itself.
 
-That threshold keeps the practice lightweight. Routine changes do not need
-ceremony. Expensive understanding does need somewhere to live.
+Routine changes do not need an incident note. I create one when the investigation
+found something which is not obvious from the final configuration.
 
-The best time to write the note is the quiet minute after validation, while the
-relief is real and the evidence is still open. Future me does not need a
-perfect report. He needs the one observation I am about to forget.
+Once the fix is validated, I write the short note and add its one-line summary
+to the index. That is normally enough for the next investigation to start from
+the useful check instead of repeating the complete incident.

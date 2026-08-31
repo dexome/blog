@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: My staged migration of live OPNsense DNS, DHCP, firewall, NAT, VPN, and Omada resources into OpenTofu
+date: "2026-07-07T00:00:00+05:30"
+description: How I moved my existing OPNsense and Omada configuration into OpenTofu without rebuilding it
 featured_image: ""
 tags:
 - guide
@@ -10,40 +10,32 @@ tags:
 - opentofu
 - iac
 - opnsense
-title: Moving My OPNsense Firewall into OpenTofu Without Locking Myself Out
-draft: true
+title: Managing My Existing OPNsense Setup with OpenTofu
 ---
 
-I did not begin managing OPNsense with OpenTofu by declaring the whole appliance.
-I used the `browningluke/opnsense` REST provider, began with one Unbound DNS
-setting, imported it, and refused to continue
-until the plan said:
+I wanted to manage my existing OPNsense configuration using OpenTofu. The
+firewall was already running DNS, DHCP, several VLANs, VPN connections and all
+the rules for my home network. Recreating everything from code was not an option.
+
+I used the `browningluke/opnsense` provider and started with one Unbound DNS
+setting. After importing it, I did not continue until the plan showed:
 
 ```text
 No changes. Your infrastructure matches the configuration.
 ```
 
-That caution paid for itself in the next subsystem. A provider default on a DHCP
-resource cleared the router and DNS options from several subnets. Clients still
-received addresses, which made the outage initially look like routing or DNS.
-The actual problem was that the infrastructure tool had faithfully written an
-empty option set.
+This worked for DNS, but the next step caused a DHCP outage because one provider
+default removed the gateway and DNS options from client leases. This post covers
+the order I used after that incident and the provider limitations I found.
 
-The experience changed how I think about infrastructure as code for appliances.
-The hard part is not expressing the desired state. It is discovering how the
-provider translates between its schema and a mature, already-running system.
+## Import first and make no changes
 
-This is the staged method I used to move DNS, DHCP, switching, firewall filters,
-and NAT toward code without attempting one heroic conversion.
-
-## The operating rule: adopt before you improve
-
-There are two tempting goals during an IaC migration:
+There are two separate things we may want to do during this migration:
 
 1. represent the current system in code;
 2. clean up the system while doing it.
 
-Do not combine them.
+I would not combine them.
 
 The first goal is adoption. Its success criterion is boring: after import, the
 configuration describes the live object exactly enough that a plan proposes no
@@ -74,7 +66,7 @@ flowchart TB
 	F --> N[NAT and VPN resources]
 {{< /mermaid >}}
 
-## Phase 1: start with DNS objects
+## Start with Unbound DNS
 
 Resolver settings and host overrides were a good first target. Sixty-six Unbound
 objects were numerous enough to test import automation but less dangerous than
@@ -97,7 +89,7 @@ The first phase ended with dozens of objects imported and a no-op plan. The poin
 was not the count. It was proving the API credentials, import identifiers, schema,
 and state storage before touching client connectivity.
 
-## Phase 2: the DHCP outage hidden inside a default
+## Kea DHCP and the `auto_collect` issue
 
 Kea DHCP import covered 64 objects and looked equally clean until the first apply.
 Clients on THINGS and QUANTUM renewed and still received valid addresses, but
@@ -141,8 +133,8 @@ flowchart LR
 		IP --> SYMPTOM[Looks connected but cannot route or resolve]
 {{< /mermaid >}}
 
-The resource names vary by provider, but the lesson does not: defaults in an IaC
-schema describe provider behavior, not necessarily the appliance's live behavior.
+The important thing here is that the provider default did not match the existing
+OPNsense behavior. I now set every client-visible DHCP option explicitly.
 
 After restoring the option data, I verified DHCP as a client would:
 
@@ -155,7 +147,7 @@ After restoring the option data, I verified DHCP as a client would:
 "The service is running" would not have caught this failure. DHCP was running
 perfectly while handing out incomplete leases.
 
-## Phase 3: controller-managed switching
+## Importing Omada configuration
 
 The managed-switch controller added another translation layer. The API endpoint
 behind the normal reverse-proxy address redirected login requests, while the
@@ -178,7 +170,7 @@ Ethernet belonged to a port profile. Applying a profile with PoE disabled to a
 live access point would cut power to the device carrying the management traffic.
 I treated profile changes as physical operations, not harmless metadata edits.
 
-## Phase 4: firewall rules and the ordering problem
+## Firewall rules and their real order
 
 Firewall filters were the highest-risk phase because the appliance had two rule
 stores:
@@ -233,7 +225,7 @@ Explicit sequence values were essential. Relying on every resource's default
 sequence created ties and non-deterministic placement. I reserved sequence ranges
 per interface so both humans and the provider had one stable ordering model.
 
-## Disabled is not the same as absent
+## Disabled rules can still block deletion
 
 One migration exposed another appliance quirk. A disabled legacy rule still
 referenced an alias, and that reference prevented OpenTofu from deleting the
@@ -245,7 +237,7 @@ The fix was to remove the obsolete legacy rule, not merely disable it.
 This is why I avoided bulk cleanup during adoption. Relationships that do not
 affect packet evaluation can still affect schema validation and deletion order.
 
-## NAT is a separate migration
+## Migrating NAT separately
 
 Filter rules and NAT rules may appear together in the GUI, but they are not the
 same ownership boundary. Some legacy firewall rules carried an association to a
@@ -257,9 +249,9 @@ fields rejected aliases, and protocol values normalized differently from the
 appliance. These limitations did not invalidate the whole migration. They defined
 which details stayed appliance-managed and which needed a different expression.
 
-Infrastructure as code becomes brittle when "everything must be managed" is
-treated as a moral requirement. Partial, explicit ownership is safer than false
-ownership.
+I left settings in the GUI when the provider could not safely read and write
+them. It is better to document that boundary than force an incomplete resource
+to own it.
 
 ## Secrets and state
 
@@ -283,7 +275,7 @@ Import declarations are worth retaining as disaster-recovery documentation. A
 state loss otherwise also loses the mapping between stable resource names and
 opaque appliance UUIDs.
 
-## My migration checklist
+## Checks used for each resource type
 
 For every new resource family, I now ask:
 
@@ -309,11 +301,11 @@ For every new resource family, I now ask:
 - Did the appliance preserve fields the provider does not expose?
 - Does a second plan return to no changes?
 
-## The value is not "everything in code"
+## Final setup
 
-The useful outcome was not that every checkbox disappeared from the GUI. Some
-settings remained GUI-managed because the provider could not represent them
-safely. The useful outcome was a clear ownership map and a repeatable process:
+Not every OPNsense setting is managed by OpenTofu. Some remain in the GUI because
+the provider cannot represent or write them safely. What I have now is a clear
+list of which tool owns each resource and a repeatable process:
 
 - import live state;
 - insist on zero drift;
@@ -321,7 +313,7 @@ safely. The useful outcome was a clear ownership map and a repeatable process:
 - inspect the effective system, not just the tool's model;
 - preserve a way back in.
 
-The DHCP incident was the warning I needed. A syntactically valid plan and a
-successful apply can still produce a network outage. The tool only promises to
-write what its schema says. It is our job to prove that the schema means what the
-running appliance means.
+The main rule is to get a no-change plan after import and then apply one small
+change. Also verify from a real client. In the DHCP incident, the daemon was
+healthy and the apply succeeded, but clients received leases without a gateway
+or DNS server.

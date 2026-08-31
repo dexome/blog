@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: How I combined per-bind idmaps, real process umasks, application chmod policy, and inherited ACLs across Copyparty, the arr stack, and Frigate
+date: "2026-08-17T00:00:00+05:30"
+description: How I share media between Copyparty, Radarr and Frigate when each container uses a different UID
 featured_image: ""
 tags:
 - guide
@@ -9,17 +9,15 @@ tags:
 - acl
 - idmap
 - linux
-title: Shared Container Storage Needs More Than the Right UID
-draft: true
+title: Sharing Files Between Containers with Different UIDs
 ---
 
-The file was writable. Radarr still could not replace it.
+I have multiple containers which need to write into the same media folders.
+Copyparty runs as UID 924, the arr applications run as UID 911 and Frigate uses
+UID/GID 914 on the host. They need to create, rename and delete each other's
+files without running all services as the same user.
 
-That sentence captures most of what makes shared container permissions
-frustrating. We inspect the target file, see group write, and miss that rename
-and deletion are operations on the containing directory.
-
-My host had three versions of this problem:
+I faced three related issues:
 
 - Copyparty ran as UID 924 and shared media with the arr stack at UID 911.
 - Frigate had to initialize as root in its container while retaining host
@@ -27,9 +25,10 @@ My host had three versions of this problem:
 - A mergerfs view combined two branches whose copies of the same directory had
 	different modes.
 
-They looked like one ownership bug. They required four different controls.
+Fixing only the owner or group was not enough. I needed idmapped mounts, correct
+directory modes, application-specific chmod settings and inherited ACLs.
 
-## Start with the Linux permission model
+## Why a writable file could not be replaced
 
 For a process to replace `movies/title/video.mkv`, it needs write and execute on
 `movies/title/`. Write permission on `video.mkv` controls modification of the
@@ -50,10 +49,10 @@ flowchart TB
 		FILE[Writable target file] -. does not decide unlink .-> DENY
 {{< /mermaid >}}
 
-That model prevented me from trying random recursive `chown` commands. The next
-step was to identify who created the directory and what mode it actually had.
+So the first check was the owner and mode of the parent directory, not only the
+movie file.
 
-## Incident one: a Copyparty rename broke a Radarr import
+## Copyparty rename blocked a Radarr import
 
 Radarr failed while upgrading a movie:
 
@@ -85,7 +84,7 @@ I applied that policy to the Copyparty volumes shared with the arr stack,
 qBittorrent, and Picard. Existing entries needed a one-time repair because
 creation policy is not retroactive.
 
-## The mergerfs trap: one path, two sets of metadata
+## Fixing both mergerfs branches
 
 My first repair changed the affected directory under the `btank` backing tree.
 The error persisted. The visible media path was a mergerfs union of `btank` and
@@ -121,7 +120,7 @@ find /mnt/btank/@media/movies /mnt/btwo/@media/movies \
 After both branch copies were corrected, Radarr deleted the old file and
 completed the import.
 
-## Incident two: Frigate needed root inside and 914 outside
+## Frigate runs as root inside the container
 
 Frigate's official image starts through s6-overlay and needs container root for
 initialization. Forcing `--user 914:914` broke startup. Running it rootful with a
@@ -155,7 +154,7 @@ This is different from the alternatives:
 | Whole-container user namespace | Ownership view for the container | Complicated GPU and group mappings |
 | Per-bind idmap | Ownership view for one mount | Preserved both image and host contracts |
 
-## The synthetic test passed and production still failed
+## s6 reset the process umask
 
 In a disposable directory, `--umask=0002` produced directories at `0775` and
 files at `0664`. Copyparty, running as UID 924 with supplementary GID 914, could
@@ -178,10 +177,9 @@ the process requests a stricter base mode. Copyparty also joins supplementary
 GID 914, and its own creation policy emits group-writable entries when it writes
 into the same tree.
 
-## The complete contract
+## Final permission setup
 
-No single setting solved every direction of collaboration. The working design
-was:
+The working setup uses:
 
 - stable host ownership through Frigate's per-bind idmap;
 - shared or supplementary groups selecting the intended permission class;
@@ -190,12 +188,11 @@ was:
 - inherited default ACLs where s6 reset the process umask;
 - repairs performed on every mergerfs backing branch.
 
-For each shared mount, I now test the operations separately: read, create,
-modify, rename, delete, `mkdir`, and `rmdir`. I run those tests as the real UIDs
-and groups on the real filesystem type, then repeat them with output created by
-the actual supervised application.
+For each shared mount, I test read, create, modify, rename, delete, `mkdir` and
+`rmdir` using the real service UIDs and groups. I also test files created by the
+actual application, not only a shell started in the same image. This was important
+for Frigate because s6 changed the umask after Podman started the container.
 
-The durable lesson is that "correct owner" is only one line in the contract.
-You also need to know the creator's real umask, later `chmod` behavior, the
-consumer's supplementary groups, the parent directory mode, inherited ACLs,
-and whether a union filesystem is hiding another copy of the metadata.
+If mergerfs is involved, check and repair every backing branch. The permissions
+shown through the merged path may come from a different branch than the file
+being modified.

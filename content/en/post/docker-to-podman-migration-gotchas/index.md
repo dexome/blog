@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: What broke when I moved a 36-container NixOS host from Docker to rootful Podman, and the checks that made the migration repeatable
+date: "2026-06-08T00:00:00+05:30"
+description: Issues I found while moving 36 NixOS-managed containers from Docker to Podman
 featured_image: ""
 tags:
 - guide
@@ -8,27 +8,25 @@ tags:
 - docker
 - podman
 - linux
-title: "Docker to Podman: The Runtime Swap Was the Easy Part"
-draft: true
+title: Moving My NixOS Containers from Docker to Podman
 ---
 
-The line that started the migration looked almost trivial:
+NixOS makes it simple to change the backend used by
+`virtualisation.oci-containers`:
 
 ```nix
 virtualisation.oci-containers.backend = "podman";
 ```
 
-On my NixOS host, that line sat underneath 36 containers, custom bridge and
-macvlan networks, static addresses, shared network namespaces, health checks,
-GPU devices, bind mounts, and several services consuming the Docker API.
+In my setup, this changed 36 containers with custom networks, static IP
+addresses, shared network namespaces, health checks, GPU devices and bind
+mounts. Traefik, Netdata, Glances and Dozzle were also using the Docker API.
 
-Podman was compatible with most of it. "Most" was enough to build a dangerous
-first impression and not enough to complete an activation.
+Most Docker options worked with Podman, but a few differences stopped containers
+from starting. Network recreation and systemd health checks caused another set
+of problems after the initial migration.
 
-The useful way to tell this story is not as a Docker-versus-Podman feature list.
-It is the sequence in which compatibility assumptions failed.
-
-## Why make the change
+## Why I moved to Podman
 
 I wanted a runtime that fit the host's existing systemd ownership model. Podman
 gave me generated `podman-<name>.service` units, native health actions, a rootful
@@ -54,7 +52,7 @@ The migration began with mechanical changes: rename unit references from
 `docker-*` to `podman-*`, change supplementary group membership from `docker` to
 `podman`, and replace socket paths. Then the behavioral differences appeared.
 
-## Gotcha one: Podman validates combinations Docker ignored
+## `--health-on-failure` needs a health check
 
 I replaced autoheal with Podman's native unhealthy action:
 
@@ -91,10 +89,10 @@ started:
 | `--tmpfs=/transcode:uid=912,gid=912` | Unknown mount option | `mode=1777` where appropriate |
 | `--network=name=NET,ip=IP` | Comma split into two network names | `--network=NET:ip=IP` |
 
-These were useful failures: deterministic, immediate, and visible in the unit
-journal. The later failures were more deceptive.
+These errors were visible in the generated systemd unit logs and were simple to
+reproduce before starting the application.
 
-## Gotcha two: a successful activation can still report failure
+## Transient health checks caused exit code 4
 
 Podman implements periodic health checks using transient systemd services. On
 the first activation, containers were pulling images and warming up while these
@@ -120,9 +118,9 @@ sequenceDiagram
 	Note over S,C: Final state is healthy despite activation result
 {{< /mermaid >}}
 
-That does not make exit 4 safe to ignore. It changes the triage order. I check
-the failed unit, the declared network service, and current container health
-separately:
+Exit code 4 should not be ignored, but it can be caused by a health check which
+has already recovered. I check the failed units, network service and current
+container state separately:
 
 ```sh
 systemctl --failed --no-pager
@@ -133,7 +131,7 @@ podman ps --format 'table {{.Names}}\t{{.Status}}'
 A transient probe that has already cleared is different from a network
 reconciler that is still failed.
 
-## Gotcha three: stopped is not detached
+## Stopped containers are still attached to networks
 
 I wrote a declarative network reconciler so changes to subnet, gateway, or
 interface name would recreate a drifted Podman network. Container units were
@@ -156,7 +154,7 @@ The drift path needed `podman network rm -f`. Force removal disconnected and
 removed the stopped container records; systemd recreated them after the network
 returned.
 
-## Gotcha four: recreating a network resets the allocator
+## Network recreation cleared all IPAM leases
 
 The force-removal fix exposed the next bug. Recreating the proxy bridge erased
 netavark's IPAM leases. A dynamic container started first and received
@@ -172,7 +170,7 @@ The old network had worked only because its historical lease happened to keep
 `.2` occupied by the intended container. Start order became visible after a
 cold reconstruction.
 
-The durable fix separated static and dynamic address space:
+I separated the static and dynamic address ranges:
 
 ```nix
 subnet = "10.89.0.0/24";
@@ -194,7 +192,7 @@ flowchart TB
 	HIGH --> OK[Traefik always claims static .2]
 {{< /mermaid >}}
 
-## Gotcha five: firewall reloads removed embedded DNS access
+## NixOS firewall reload broke aardvark-dns
 
 aardvark-dns listens on each netavark bridge gateway. Netavark inserted rules
 allowing DNS, but the NixOS firewall reload flushed those runtime-generated
@@ -212,21 +210,19 @@ This incident also taught me that `--internal` does not mean "DNS-free." An
 internal bridge may need its embedded resolver for other names on that same
 private network even when it has no Internet route.
 
-## The migration test I would use next time
+## Checks I would use for another migration
 
 I would split validation into four layers:
 
-1. **Image contract:** inspect the pinned image for health checks, users, entry
-   point behavior, and baked metadata.
-2. **Creation contract:** create every container and catch option-parser
-   incompatibilities before evaluating application health.
-3. **Network reconstruction:** delete and recreate networks from empty IPAM state,
-   then vary container start order.
-4. **Host integration:** reload the firewall, restart the network reconciler,
-   reboot, and confirm systemd reaches the same steady state each time.
+1. Inspect every pinned image for a baked health check instead of relying on its
+	documentation.
+2. Create every container once to find unsupported option formats.
+3. Delete and recreate the declared networks so the test starts with empty IPAM
+	state.
+4. Reload the NixOS firewall and check DNS from an internal bridge.
+5. Reboot and make sure the same containers and static IPs return without relying
+	on the old start order.
 
-The key word is *reconstruction*. A migration that works only with inherited
-bridges, leases, and already-pulled images has not yet proved its declarations.
-
-Podman did become the boring, systemd-native runtime I wanted. Getting there
-required treating Docker compatibility as a starting hypothesis, not a promise.
+Podman has been working well after these fixes. The container applications did
+not need changes; most of the migration work was around image metadata, command
+line parsing, systemd health checks and netavark state.

@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: How a copied mDNS repeater created a 160,000 packets-per-second storm while I was building OPNsense HA with CARP
+date: "2026-08-04T00:00:00+05:30"
+description: Issues I faced while setting up OPNsense HA with CARP, pfsync and Kea
 featured_image: ""
 tags:
 - guide
@@ -8,32 +8,21 @@ tags:
 - firewall
 - high-availability
 - carp
-title: The mDNS Storm That Looked Like a CARP Split-Brain
-draft: true
+title: Setting up OPNsense HA with CARP and pfsync
 ---
 
-The backup firewall had been online for less than a minute when the entire
-network became unstable.
+I run two OPNsense VMs, one on `metalbox` and another on `heavymetal`. I wanted
+the second firewall to take over the gateway, DNS, DHCP and existing connections
+when the first host was unavailable.
 
-SSH sessions froze. Clients dropped off the LAN. Packet rates climbed toward
-160,000 packets per second. The failure began exactly when the second CARP node
-booted, so the obvious conclusion was that CARP was fighting itself: duplicate
-masters, mismatched passwords, or two routers claiming the same gateway.
+CARP itself was the easy part. The difficult parts were the services around it.
+When I first booted the backup firewall, the network reached around 160,000
+packets per second and became unusable. Later, CARP moved the IP correctly but
+DNS stopped and existing TCP connections were lost.
 
-That conclusion was wrong.
+Below is how I configured the full setup and the issues I found while testing it.
 
-Both firewalls had the correct CARP state. The backup was not trying to become
-master. The outage came from an unrelated service copied along with the firewall
-configuration: a second mDNS reflector was repeating the first reflector's
-packets, which the first repeated again. The two nodes had built an amplification
-loop across the LAN.
-
-That incident became a useful definition of high availability. Sharing a virtual
-IP is only the visible part. A firewall pair is not highly available until every
-stateful or broadcast-aware service understands which node is active, both nodes
-agree on configuration, and existing connections survive the transition.
-
-## What "HA firewall" actually contains
+## The HA setup
 
 The finished design runs two OPNsense VMs on separate NixOS hypervisors. Node A
 runs on `metalbox`; node B runs on `heavymetal`. Clients keep using the familiar
@@ -65,17 +54,16 @@ flowchart TB
 	A ==>|VLAN 67: XMLRPC, pfsync, Kea HA| B
 {{< /mermaid >}}
 
-Each mechanism solves a different problem:
+There are four separate parts in this setup:
 
 - CARP moves gateway and service IP addresses between nodes.
 - Configuration sync keeps rules and services aligned.
 - State sync copies the firewall state table so established connections live.
 - Application-level HA makes services such as DHCP and mDNS behave correctly.
 
-I brought them up in stages because debugging all four at once would have made
-the first outage much harder to understand.
+I configured and tested them one at a time.
 
-## Stage one: make one node speak CARP
+## Configure CARP on the first node
 
 Before introducing a backup, I converted the existing firewall into a single
 CARP master. Its old gateway addresses became virtual IPs, while the firewall
@@ -96,7 +84,7 @@ It also established a useful naming pattern:
 
 When HA itself is broken, the node-specific addresses are the way back in.
 
-## Stage two: boot the backup and lose the network
+## Booting the backup caused an mDNS storm
 
 The second node started from a copy of the first node's configuration. Its CARP
 advertisement priority was lower, so it should have stayed in BACKUP. Within
@@ -110,8 +98,8 @@ The timing made a split-brain theory persuasive. I checked the usual suspects:
 - multicast advertisements arrived on every VLAN;
 - the backup remained silent in BACKUP instead of advertising as another master.
 
-Those checks falsified the theory. The failure happened when the CARP node
-started, but CARP was not producing it.
+These checks showed CARP was working as expected. I then captured the traffic
+causing the packet storm.
 
 The breakthrough was to stop looking only at CARP packets and inspect the storm
 itself. Almost all of it was UDP port 5353: multicast DNS. Both node MAC addresses
@@ -146,13 +134,11 @@ repeater only while the node is CARP master. I configured the service identicall
 on both nodes but enabled its CARP-aware failover mode. The backup retained the
 configuration without running the reflector until promotion.
 
-This rule generalizes beyond mDNS:
+The same check is needed for any service that broadcasts or reflects traffic.
+Copying the configuration to the backup can make both instances active at the
+same time.
 
-> Any service that reflects, broadcasts, leases, announces, or owns shared state
-> needs an explicit HA model. Copying its configuration to a second firewall is
-> not an HA model.
-
-## Stage three: build a real sync network
+## Dedicated network between the firewalls
 
 I added VLAN 67 between the firewalls for control traffic. It had no client
 gateway and no virtual IP. OPNsense A used `10.100.67.6/28`, OPNsense B used
@@ -178,40 +164,40 @@ flowchart LR
 	CARP -.-> B
 {{< /mermaid >}}
 
-## Five ways configuration sync can almost work
+## Problems with configuration sync
 
 The config-sync page looked straightforward: peer address, username, password,
 and a list of areas to synchronize. It failed for five independent reasons.
 
-### 1. The management ports differed
+### Management ports were different
 
 One node exposed its GUI directly on the default HTTPS port. The other listened
 on a non-default local port behind a reverse proxy. Config sync contacted the
 peer's real address, not the public proxy name, so both web services needed a
 reachable and explicitly matching port.
 
-### 2. The peer was not listening on the sync interface
+### GUI was not listening on the sync interface
 
 The backup's web server listened only on its LAN interface. A TCP connection over
 the dedicated sync address therefore had nowhere to land. Adding the sync
 interface to the GUI's listen scope fixed the transport without widening client
 access.
 
-### 3. Certificate verification rejected the peer
+### Certificate verification failed
 
 The peers used a self-signed management certificate over a private, dedicated L2
 link. Certificate verification failed before credentials were considered. In
 this topology I disabled peer verification for the sync call. A better option,
 when supported, is to give each node a certificate chaining to an internal CA.
 
-### 4. The sync account had the wrong privilege
+### The sync user needed another privilege
 
 The user could open the HA configuration page but could not call the XMLRPC
 library. "High Availability" GUI access and XMLRPC execution were separate
 permissions. Granting only the narrowly required library privilege fixed the API
 call without turning the account into an administrator.
 
-### 5. Nothing automatically pushed changes
+### Changes were not pushed automatically
 
 The largest conceptual surprise was that saving a configuration did not
 necessarily push it to the backup. The GUI's explicit "synchronize all" action
@@ -225,7 +211,7 @@ The reusable lesson is to test config sync as an action, not as a checkbox. Chan
 a harmless object on the primary, trigger the documented sync path, and prove it
 appears on the backup.
 
-## DHCP has its own election
+## Kea DHCP hot standby
 
 CARP moving the gateway does not automatically make the backup DHCP server safe.
 Two independent DHCP servers with copied configuration can both answer clients,
@@ -240,16 +226,16 @@ The configuration failed when both peers used the same server name. Kea requires
 primary's name into synchronized configuration made both nodes identify as the
 primary.
 
-The durable fix was to give the firewalls distinct hostnames, declare those as
-peer names, and leave `this-server-name` empty so each node derives its identity
-locally. Node identity must not be a value copied from primary to backup.
+I gave the firewalls distinct hostnames, declared those as peer names, and left
+`this-server-name` empty so each node derives its identity locally. The node
+identity cannot be copied from primary to backup.
 
 Hot standby also has a detection interval. In this case the standby waited about
 a minute before entering partner-down mode. Existing clients with leases stayed
 online; a new or renewing client might wait. That is not a broken failover, but it
 is part of the service-level objective and should be measured rather than assumed.
 
-## DNS failed only after a successful failover
+## Unbound stopped answering after failover
 
 With CARP working, the virtual gateway moved cleanly to the backup. Clients could
 route, but DNS queries to the gateway timed out.
@@ -269,7 +255,7 @@ of addresses whose presence changes with ownership. Either bind wildcard/automat
 and enforce access in the firewall, or use a service hook that reacts correctly
 to every promotion and demotion.
 
-## CARP moved the IP; pfsync preserved the conversation
+## Keeping connections with pfsync
 
 At this point a cable pull promoted the backup, moved the virtual IPs, and kept
 DNS and DHCP available. Yet established TCP sessions still died.
@@ -289,7 +275,7 @@ After bidirectional state sync was working, it did.
 
 That test proved something a successful ping never could.
 
-## The failover matrix
+## How I tested the failover
 
 I ended with a matrix instead of a single "HA works" result:
 
@@ -307,10 +293,9 @@ I ended with a matrix instead of a single "HA works" result:
 Running the matrix in both directions exposed assumptions hidden by testing only
 the preferred primary.
 
-## What I mean by "actually fails over"
+## Final checks
 
-A virtual IP changing owners is necessary, but it is not the finish line. My
-working definition now is:
+Moving the virtual IP was only one of the checks. The setup was complete when:
 
 - there is exactly one active owner for each singleton or broadcast service;
 - both nodes carry compatible configuration without becoming competing writers;
@@ -320,10 +305,11 @@ working definition now is:
 - the behavior has been proven by removing the active node, not inferred from a
 	green status page.
 
-The mDNS storm was disruptive, but it was also the most useful test in the whole
-project. It forced every copied service to answer a harder question than "is the
-configuration present?" The question is: "what should this service do while the
-node is backup?"
+The main issue I found was assuming that copying a service configuration also
+made the service HA-aware. The mDNS repeater had to run only on the CARP master,
+Kea needed its own peer state and Unbound needed to listen on an address which
+appears only after promotion.
 
-Until every service has an answer, the second firewall is not a hot spare. It is
-another source of state waiting to surprise you.
+Finally, test with a real cable pull and a long-running connection. A successful
+ping after pressing the CARP maintenance button does not verify pfsync or the
+hard-failure path.

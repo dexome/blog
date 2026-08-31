@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: The stale PPPoE session and switch control traffic that turned my WAN VLAN migration into two separate outages
+date: "2026-07-30T00:00:00+05:30"
+description: What went wrong when I moved my PPPoE WAN through an Omada switch and VLAN 999
 featured_image: ""
 tags:
 - guide
@@ -8,27 +8,24 @@ tags:
 - pppoe
 - isp
 - wan
-title: How Moving My PPPoE WAN onto a VLAN Took Down the Internet Twice
-draft: true
+title: Moving My PPPoE WAN to VLAN 999
 ---
 
-There is a dangerous sentence in home networking: "I am only moving one cable."
+I wanted to move the WAN connection from a dedicated port on OPNsense to VLAN
+999 through my Omada switch. This would allow both OPNsense nodes to reach the
+same ONT connection and was needed for the HA setup.
 
-In my case, the plan was to move a working PPPoE connection from a physical WAN
-port onto a VLAN carried through a managed switch. The credentials were not
-changing. The optical terminal was not changing. The firewall configuration was
-already prepared. I expected a short interruption while the new interface
-dialled the same connection.
+The PPPoE username, password and ONT were not changing. I had already configured
+the VLAN and expected the Internet to be down only for the time needed to move
+the cable and connect again.
 
-Instead, the firewall sent discovery packets into a void. Later, after I got the
-connection working, it died again for an entirely different reason.
+It did not work that way. The first connection failed because I had left the old
+PPPoE session active at the ISP. Once I fixed that, the connection dropped again
+because the Omada switch was sending loop-detection packets towards the ONT.
 
-This is the story of both failures. The exact interface names and switch model do
-not matter. The useful part is learning where state can hide during a WAN
-migration: in your firewall, in the access concentrator at the ISP, and in a
-managed switch that believes it is helping.
+This post covers both issues and the order I now use for a PPPoE cutover.
 
-## The move that should have taken five minutes
+## The setup
 
 The old topology was direct. The Syrotech GPON ONT connected to the bare-metal
 OPNsense firewall's `igc0` interface. The new design moved that Ethernet segment
@@ -42,10 +39,9 @@ flowchart TB
 	BEFORE -->|Move WAN onto the managed-switch trunk| AFTER
 {{< /mermaid >}}
 
-The layer-2 preparation looked good. A test device on the VLAN could reach the
-management side of the optical terminal. Tags arrived where they should. The
-PPPoE credentials were unchanged. So I pulled the cable from the old port, moved
-it, and enabled the new interface.
+The VLAN setup looked correct. A test device on the same path could reach the
+management IP of the ONT and packet captures showed the expected VLAN traffic.
+So I pulled the cable from the old port, moved it and enabled the new interface.
 
 The connection never completed.
 
@@ -54,7 +50,7 @@ expected PADO response did not come back. At other points the logs showed LCP
 negotiation repeating with new magic numbers, never reaching a usable session.
 It looked close enough to working to keep sending me down the wrong paths.
 
-## First suspect: the VLAN
+## Checking the VLAN first
 
 VLANs are an obvious suspect because they can fail silently. An access port can
 be untagged in the wrong VLAN, a trunk can omit the tag, or a native VLAN can
@@ -66,24 +62,23 @@ the firewall showed the expected Ethernet discovery frames on the expected VLAN.
 That did not prove every switch behavior was correct, but it proved that this was
 not simply a missing tag.
 
-## Second suspect: MAC locking
+## Checking the WAN MAC
 
 Many providers bind service to a router or ONT MAC address, so MAC locking was
 the next theory. I tried preserving the previous WAN MAC and inspected the
 provider-facing frames. It was a reasonable theory, but it did not explain the
 behavior.
 
-The important lesson here is not that residential ISPs never use MAC locking.
-Some do. The lesson is to separate three questions:
+Some ISPs lock the connection to a MAC address, so this was still worth checking.
+There are three separate things which can cause a new router or port to fail:
 
 1. Does the provider authenticate only with a username and password?
 2. Does it also remember the client MAC?
 3. Does it permit more than one simultaneous PPPoE session on the line?
 
-Those policies produce similar "new router cannot connect" symptoms, but require
-different fixes. In this case, the third question was the one that mattered.
+All three look similar from OPNsense. In my case, the third one was the problem.
 
-## The session I left behind
+## Closing the old PPPoE session
 
 I had moved the cable while PPPoE was still active. That is not a clean session
 shutdown.
@@ -142,9 +137,9 @@ termination frame before any cable moved.
 
 With the old session closed first, the new interface authenticated normally.
 
-That should have been the end of the story.
+The connection came up on VLAN 999 after this. But it did not stay up.
 
-## The second outage
+## Omada loop detection on the ONT port
 
 The PPPoE session later failed again, this time after it had already been stable.
 The pattern was different: discovery could be blocked outright, or an established
@@ -176,21 +171,17 @@ flowchart TD
 After that per-port change, the PPPoE session stayed up through the observation
 window and survived reboots of the relevant equipment.
 
-This second failure matters because it looked like evidence against the first
-fix. It was tempting to conclude that the stale-session diagnosis had been wrong.
-It was not wrong. Two independent faults happened to occupy the same path:
+Initially I thought the earlier fix was incomplete, but this was a separate
+problem on the same path:
 
 - the cutover failed immediately because the old PPPoE session was never closed;
 - the repaired connection later failed because the switch injected control
   traffic into the WAN bridge.
 
-Treating every recurrence as proof that the previous root cause was false would
-have sent the investigation in circles.
+## The migration steps I use now
 
-## A safer migration procedure
-
-Here is the runbook I now use when moving a live PPPoE WAN between ports, VLANs,
-routers, or HA nodes.
+Below is the order I now use when moving a live PPPoE WAN between ports, VLANs or
+firewall nodes.
 
 ### Before the maintenance window
 
@@ -244,22 +235,17 @@ Do more than check that a public IP appeared:
 The distinction between "connected once" and "operationally complete" saved me
 from calling the migration finished before the loop-detection failure surfaced.
 
-## What I would do differently
+## Key things to check
 
-I would begin with the upstream state model rather than treating the WAN as a
-stateless Ethernet cable. A PPPoE connection is a session shared by two systems.
-Changing only my end does not erase the other end's memory.
+The immediate failure and the delayed failure had different causes. If PPPoE
+does not connect after moving a cable, first check whether the old session was
+closed properly. If it connects and drops later, check what the switch is sending
+on the WAN VLAN.
 
-I would also treat any managed switch in a WAN path as an active participant,
-even if it is carrying only one isolated VLAN. Features such as loop detection
-change what appears on the wire. "It is just layer 2" does not mean "it is
-transparent."
+Also, a managed switch is not always transparent. Disable STP, loop detection or
+similar active features on the ONT-facing port unless you know the ISP path can
+handle them.
 
-Most importantly, I would preserve the chronology of each symptom. Immediate
-failure after a cable pull suggested stale session state. A delayed failure after
-successful authentication suggested periodic control traffic. Those timelines
-were more useful than the common label "PPPoE is down."
-
-The final rule is simple: before moving a live WAN, end the old session on
-purpose. Then make every device in the new path prove that it is as transparent
-as you assumed.
+Most importantly, disconnect PPPoE before moving the cable and verify the PADT in
+a packet capture. Waiting for the ISP timeout also worked, but it made a simple
+cutover take much longer than needed.

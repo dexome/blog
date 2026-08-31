@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: How heavymetal moved from scripted NixOS networking to stable per-VLAN bridges and finally one VLAN-aware trunk
+date: "2026-06-18T00:00:00+05:30"
+description: How I moved my NixOS VLAN setup from startup scripts to systemd-networkd and a VLAN-aware bridge
 featured_image: ""
 tags:
 - guide
@@ -9,30 +9,26 @@ tags:
 - systemd-networkd
 - bridge
 - vlan
-title: How My NixOS Network Evolved from Scripts to a VLAN-Aware Bridge
-draft: true
+title: Moving My NixOS Network to systemd-networkd
 ---
 
-The first migration on my NixOS server, `heavymetal`, was supposed to change only
-who created the interfaces.
+My NixOS server `heavymetal` already had multiple VLANs, static IP addresses and
+macvlans used by containers. They were created using startup scripts and worked,
+but restarts and NixOS activations did not always recreate them in the correct
+order.
 
-The host already had VLANs, static addresses, routes, and container macvlans. A
-set of scripts brought them up in the correct order most of the time. I wanted
-systemd-networkd to describe the same topology declaratively, with dependencies
-that systemd could reason about.
+I first moved the same setup to systemd-networkd. Later, when I needed to attach
+VM tap interfaces to the VLANs, I added per-VLAN bridges and finally replaced
+them with one VLAN-aware bridge.
 
-The addresses did stay the same. Almost everything else about interface
-lifecycle became visible.
-
-The migration eventually took three forms:
+The migration happened in three steps:
 
 1. replace imperative networking with networkd units;
 2. move host addresses from VLAN devices onto stable per-VLAN bridges;
 3. consolidate those bridges into a single VLAN-aware trunk.
 
-Each step solved a real limitation exposed by the step before it. This is less a
-recipe for one perfect topology than a diary of how the topology evolved without
-turning a remote networking change into a permanent lockout.
+I did not apply the bridge migrations live because they moved the same management
+IP used by SSH. Those changes were staged for boot with console access available.
 
 {{< mermaid caption="The network evolved in three controlled steps rather than jumping directly from scripts to the final VLAN-aware bridge." >}}
 flowchart TB
@@ -41,7 +37,7 @@ flowchart TB
 	P -->|Stable parents enable VM taps| T["VLAN-aware bridge<br/>brtrunk"]
 {{< /mermaid >}}
 
-## Before: a topology assembled by commands
+## The old startup scripts
 
 The old system created VLAN and macvlan devices through a mixture of higher-level
 configuration and startup services. Conceptually it did this:
@@ -65,7 +61,7 @@ Imperative commands are easy to prototype, but they hide ownership questions:
 
 The scripts encoded answers in execution order rather than in the topology.
 
-## Step one: describe the existing network
+## Recreate the same network with networkd
 
 I moved each concern into an explicit networkd object: VLAN `.netdev` units,
 matching `.network` units for addresses and routes, and dependencies for services
@@ -99,7 +95,7 @@ The important part was preserving topology exactly. This was not the moment to
 rename every interface or collapse five networks into one bridge. First I needed
 networkd to reproduce the working system.
 
-## The first surprise was DNS
+## systemd-resolved broke container DNS
 
 Enabling networkd on NixOS also enabled systemd-resolved through a distribution
 default. The host continued to resolve names, so the change initially looked
@@ -129,7 +125,7 @@ podman exec <container> getent hosts example.com
 
 A host-only lookup is not enough after a network-manager migration.
 
-## The parent restarted and the children vanished
+## Restarting a VLAN removed its macvlan children
 
 An older deployment had already revealed a more disruptive lifecycle problem.
 When the service owning a VLAN netdev restarted, it deleted and recreated the
@@ -174,7 +170,7 @@ It also made the weakness of the topology clear. Long-lived workloads were
 attached directly to a device that configuration reconciliation was allowed to
 destroy.
 
-## Step two: introduce stable per-VLAN bridges
+## Adding one bridge per VLAN
 
 I needed the same VLANs to be shared with ThingsHQ microVM tap devices. A macvlan
 parent cannot serve that role cleanly, so I created always-on host bridges such
@@ -221,7 +217,7 @@ selectable in the boot menu if the new management address did not come up.
 That was not excessive caution. "Same IP, different owning device" is still a
 remote access migration.
 
-## Step three: one VLAN-aware bridge
+## Moving to one VLAN-aware bridge
 
 Per-VLAN bridges solved the VM-sharing problem, but the host eventually needed a
 larger trunk topology. Five bridges and five VLAN uplinks repeated the same
@@ -271,7 +267,7 @@ replace the bridge beneath an active SSH session. The migration changed the
 master of the physical NIC, removed several bridges, recreated VLAN interfaces,
 and moved the default route. A reboot was the deterministic path.
 
-## The forwarding setting that lied by omission
+## Conflicting forwarding sysctls
 
 After one deployment, host-to-container routing failed even though
 `net.ipv4.ip_forward` appeared in the configuration.
@@ -295,9 +291,8 @@ boot.kernel.sysctl = {
 };
 ```
 
-The lesson is not that every Linux system always needs both lines. It is that a
-declarative configuration can contain the intended value while another module
-writes an equivalent key later. Validate runtime state:
+Both names refer to closely related kernel settings and another module can write
+one after the other. So I check the runtime values after activation:
 
 ```sh
 sysctl net.ipv4.ip_forward
@@ -307,7 +302,7 @@ sysctl net.ipv6.conf.all.forwarding
 
 The kernel is the final source of truth.
 
-## Source-specific interfaces and prefix routes
+## Source-only addresses and automatic routes
 
 The host also had secondary interfaces used only to originate scans or reach
 macvlan workloads. Those addresses must not automatically install connected
@@ -321,7 +316,7 @@ a harmless scan address into an SSH lockout.
 This is a niche detail with a broad principle: every new address can also create
 a route. During migrations, compare the routing table, not just the address list.
 
-## The validation sheet
+## Checks after each migration
 
 After each stage I checked the system from the bottom up.
 
@@ -362,18 +357,10 @@ sysctl net.ipv4.conf.all.forwarding
 - Do services wait for the interface state they actually require?
 - Does a second ordinary configuration apply leave the topology intact?
 
-## What networkd improved
+## Final setup
 
-systemd-networkd did not remove the complexity of the network. It made that
-complexity explicit enough to reason about.
-
-The scripts had created devices successfully, but they could not express that a
-container network was a child of a VLAN, that a service required a routable
-bridge rather than merely an existing link, or that deleting a parent invalidated
-runtime state elsewhere.
-
-The final topology was simpler than the first, but it took two intermediate
-designs to get there safely. I would follow the same order again:
+systemd-networkd did not make the network itself simple, but it made device
+ownership and startup dependencies visible. The order I would use again is:
 
 1. reproduce the working topology declaratively;
 2. observe the lifecycle failures that the old scripts concealed;
@@ -381,6 +368,7 @@ designs to get there safely. I would follow the same order again:
 4. consolidate only after the dependencies are understood;
 5. stage non-live-reparentable changes for reboot with console rollback.
 
-Declarative networking is not valuable because it makes every change safe to
-apply live. It is valuable because it tells you which changes cannot be live and
-gives the next boot enough information to build the whole graph correctly.
+Do not assume a declarative network change is safe to apply over SSH. Moving a
+management IP from a VLAN to a bridge still removes and recreates interfaces. For
+those changes, I used a boot-time migration and kept the previous NixOS generation
+available from the console.

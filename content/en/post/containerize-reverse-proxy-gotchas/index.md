@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: The three network failures I hit after moving Traefik from a native NixOS service into rootful Podman
+date: "2026-06-11T00:00:00+05:30"
+description: Issues I fixed after moving Traefik from a NixOS service into a Podman container
 featured_image: ""
 tags:
 - guide
@@ -8,28 +8,25 @@ tags:
 - containers
 - traefik
 - networking
-title: Containerizing Traefik Broke Three Different Network Boundaries
-draft: true
+title: Moving Traefik into a Podman Container
 ---
 
-Traefik was healthy. Its container was running, its health check passed, and it
-was listening on ports 80 and 443. Some applications opened normally.
+I was running Traefik as a native NixOS service. Over time, I had added proxy
+services to let it reach applications in Podman networks. Instead of keeping
+those extra proxies, I decided to run Traefik itself in Podman and attach it to
+the required networks.
 
-Others returned `502 Bad Gateway`. Requests from a different VLAN timed out
-without reaching Traefik at all. After one recreation, ingress worked briefly and
-then disappeared again.
+The container started and its health check passed, but some routes returned
+`502 Bad Gateway`. Requests from another VLAN timed out, and after recreating
+the container the ingress IP stopped responding.
 
-Those symptoms arrived together because I had moved Traefik from a native NixOS
-service into a rootful Podman container. They were not one bug. Containerization
-crossed three independent boundaries:
+There were three separate issues:
 
 1. loopback stopped meaning the host;
 2. a multi-homed network namespace chose the wrong return route;
 3. the macvlan MAC changed while the gateway still remembered the old one.
 
-The container image was never the hard part. The network namespace was.
-
-## Why I moved Traefik
+## The container network setup
 
 Native Traefik had accumulated proxy shims to reach services spread across host
 processes, Podman bridges, and network containers. Moving Traefik itself into
@@ -51,10 +48,10 @@ flowchart TB
 	T -->|container DNS and updates| INET[172.28.0.0/24 Internet bridge]
 {{< /mermaid >}}
 
-That topology was intentional. What I underestimated was how much native
-Traefik had inherited from the host namespace for free.
+The three networks worked, but the old Traefik configuration still assumed it
+was running in the host network namespace.
 
-## Failure one: localhost moved
+## Host services returned 502
 
 Several file-provider routes still targeted backends such as:
 
@@ -67,9 +64,8 @@ That URL worked when Traefik was a host process. Inside the container,
 `127.0.0.1` referred to the Traefik container itself. Netdata, go2rtc, Cockpit,
 and other host services had not moved with it.
 
-The mixed result was misleading. Services sharing a Podman bridge continued to
-work, while host-namespace and systemd-nspawn backends failed. Traefik remained
-healthy because its own process and listeners were fine.
+Services on the same Podman bridge continued to work. Only host services and
+systemd-nspawn backends failed, while the Traefik health check remained green.
 
 I tested from both sides of the namespace boundary:
 
@@ -81,8 +77,7 @@ curl -fsS http://10.89.0.1:8123/
 podman exec traefik wget -qO- -T2 http://10.89.0.1:8123/
 ```
 
-The second command was the discriminating check. It removed DNS, TLS, and the
-external firewall from the investigation.
+The second command showed the problem without involving DNS, TLS or OPNsense.
 
 The fix had three parts:
 
@@ -110,7 +105,7 @@ flowchart TB
 
 The 502s disappeared, but off-subnet clients still timed out.
 
-## Failure two: the request arrived on one leg and left on another
+## Requests from other VLANs timed out
 
 Traefik had more than one default route because netavark attached multiple
 networks. The route selected during one container creation was not guaranteed to
@@ -127,9 +122,8 @@ off-subnet request: client -> OPNsense -> Traefik macvlan
 wrong reply:        Traefik -> Podman Internet bridge -> nowhere useful
 ```
 
-This produced an empty access log for some tests because the return-path failure
-happened before the client could complete a useful HTTP exchange. An on-subnet
-test gave a false sense of success.
+Testing only from VLAN 100 made the setup look correct. I had to test from
+another VLAN and inspect the route inside Traefik's network namespace.
 
 Inside Traefik's network namespace, `ip route get <client-address>` exposed the
 selected gateway. I installed an explicit lower-metric default route through the
@@ -157,16 +151,14 @@ After the route fix, off-subnet curls returned HTTP 200 and `ip route get`
 showed the macvlan gateway. Then a later container recreation broke ingress once
 more.
 
-## Failure three: the IP stayed, the MAC changed
+## The macvlan MAC changed after recreation
 
 The macvlan attachment had a static IP but no static MAC. Podman generated a new
 MAC when Traefik was recreated. OPNsense and the upstream switching path still
 associated `10.100.100.21` with the previous MAC.
 
-That explains the odd timing: the new container could work during a short window
-when neighbor discovery happened to refresh, then traffic fell into the stale
-entry. Container health and route tables looked correct because the black hole
-was outside the namespace.
+The container health and route table still looked correct because the stale
+entry was on OPNsense and the switching path, not inside the container.
 
 I pinned the attachment identity in the Podman network specification:
 
@@ -178,7 +170,7 @@ The locally administered `02:42` prefix avoids claiming a vendor identity. The
 remaining octets encode the private address, which makes the value easy to audit.
 More importantly, recreation no longer changes the layer-2 identity.
 
-## The acceptance test I should have started with
+## Checks after the migration
 
 A reverse proxy health check proves only that Traefik can answer inside its own
 namespace. My final test matrix covered each boundary explicitly:
@@ -195,19 +187,13 @@ namespace. My final test matrix covered each boundary explicitly:
 I also checked the gateway neighbor entry after recreation rather than waiting
 for a browser symptom.
 
-## What changed in my mental model
+## Key points
 
-I had treated containerizing Traefik as a packaging change: same binary, same
-configuration, different process supervisor. It was actually a network redesign.
+Moving Traefik into a container changed more than the process manager. The native
+service could reach host loopback and used the host routing table. The container
+could use only its attached interfaces and had multiple default routes.
 
-The native process could see host loopback, host routes, and host-bound services.
-The container saw only the interfaces Podman attached. Once it had multiple
-interfaces, route selection became part of the application deployment. Once a
-macvlan carried a stable service IP, its MAC became persistent service state too.
-
-My rule now is:
-
-> Before containerizing an ingress service, inventory every namespace, route,
-> bind address, firewall layer, and layer-2 identity it currently inherits.
-
-The image may start on the first try. That does not mean the network followed it.
+For a similar migration, check all backend bind addresses, test from inside the
+Traefik container, test ingress from another subnet and recreate the container
+once before considering it complete. A static macvlan IP should also have a
+stable MAC when upstream devices keep neighbor entries for it.

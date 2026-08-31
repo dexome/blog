@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: What an Intel Arc A310 could really do with Ollama, LibreChat, and Netdata MCP after context, KV cache, and model capability collided
+date: "2026-06-10T00:00:00+05:30"
+description: My results from running Ollama, LibreChat and Netdata MCP on an Intel Arc A310 with 4 GB VRAM
 featured_image: ""
 tags:
 - guide
@@ -9,23 +9,19 @@ tags:
 - ollama
 - intel-arc
 - self-hosting
-title: What a 4 GB Intel Arc Can and Cannot Do for Local LLMs
-draft: true
+title: Running Local LLMs on an Intel Arc A310
 ---
 
-My Intel Arc A310 has 4 GB of VRAM. It is also not an inference appliance: the
-same GPU serves Frigate, Immich, Plex, and Jellyfin.
+I use an Intel Arc A310 with 4 GB VRAM for Frigate, Immich and media transcoding.
+I wanted to use the same GPU for a private LibreChat setup, with Ollama as the
+model server and Netdata exposed through MCP.
 
-I still wanted a private assistant in LibreChat, with Ollama handling local
-models and Netdata exposed as an MCP server. General chat worked. Tool calling
-did not.
+Small models worked for normal chat. Netdata tool calling did not work reliably.
+The first problem was Ollama's default 4096-token context, which removed the MCP
+tool definitions from the prompt. After increasing the context, the remaining
+problem was the capability of models which could fit on this GPU.
 
-At first this looked like a weak-model problem. Then it looked like an Ollama
-configuration problem. After several controlled tests, the honest answer was
-both: context truncation hid the tools, and once the tools became visible, the
-models that fit could not use them reliably.
-
-## The working stack
+## My setup
 
 Ollama 0.12.11 and later include an experimental Vulkan backend that can use
 Intel Arc. I passed only `/dev/dri/renderD128`, joined the render and video
@@ -42,10 +38,10 @@ flowchart TB
 	O -->|model pulls only| NET[Internet bridge]
 {{< /mermaid >}}
 
-For small models, the Vulkan backend was enough to make local chat useful. The
-surprising bottleneck was the prompt before generation even began.
+The Vulkan backend worked for small local models. The first issue appeared before
+the model generated any response.
 
-## The model never saw the tools
+## MCP tools were removed by context truncation
 
 LibreChat sent the system message, Netdata instructions, 13 MCP tool schemas,
 and the user turn. The resulting first prompt was about 11,511 tokens. Ollama's
@@ -73,7 +69,7 @@ flowchart TB
 Raising `OLLAMA_CONTEXT_LENGTH` made structured tool attempts appear. That
 proved truncation was causal. It did not yet produce a usable system.
 
-## Context consumes memory before the answer exists
+## Larger context used more VRAM
 
 At 16,384 tokens, the KV cache occupied about 1.8 GB. Only 18 of 29 model layers
 fit on the GPU; the other 11 spilled to CPU. Processing the first 11.5k-token
@@ -101,10 +97,10 @@ flowchart TB
 	C16 -->|about 1.8 GB KV| SLOW[18 of 29 layers on GPU, 131s prompt evaluation]
 {{< /mermaid >}}
 
-This is the consumer-GPU context trap: a model can fit, and a prompt can fit,
-but the model plus KV cache plus other GPU users may not fit together.
+The model files fitted, but the model, KV cache and the other GPU workloads did
+not always fit at the same time.
 
-## Three models, three different failures
+## Models I tested
 
 With logs confirming no truncation, I tested the models against simple Netdata
 questions.
@@ -124,10 +120,10 @@ began; the execution log later showed `Received tool input did not match
 expected schema`. Without checking that log, I would have mistaken an attempted
 call followed by hallucinated prose for real monitoring data.
 
-At that point, more timeout was not a solution. A timeout can wait for a capable
-model. It cannot add model capability or VRAM.
+Increasing the timeout only waited longer for the same result. It did not fix
+the invalid tool arguments or make the 7B model fit better.
 
-## The Intel acceleration detour
+## Testing the Intel SYCL backend
 
 Intel's old IPEX-LLM path looked attractive because it promised optimized SYCL
 inference. By the time I evaluated it, the repository was archived, its bundled
@@ -152,16 +148,16 @@ I kept Ollama plus Vulkan as the default. SYCL can improve throughput, but it
 does not make a 3B model format better arguments, nor does it make a 7B model fit
 in 4 GB.
 
-## What this GPU is actually good at
+## What works well on the A310
 
-The A310 remains useful for private, small-model chat, summarization, rewriting,
-and experiments where latency is acceptable. Llama 3.2 3B is the best local
-default of the models I tested because it fits well enough and at least emits
-real structured call shapes. Qwen2.5 1.5B is faster but less capable.
+The A310 is useful for private chat, summarization and small experiments. Llama
+3.2 3B was the best local default from my tests. It fitted well enough and could
+emit a real tool-call structure. Qwen2.5 1.5B was faster but printed the tool call
+as text.
 
-It is not a reliable local agent for a large MCP surface. The 13 Netdata schemas
-force a large context, the large context consumes scarce VRAM, and the models
-that remain fast enough cannot satisfy the schemas consistently.
+It was not reliable for the 13 Netdata MCP tools. Their schemas required a large
+context and the models which remained usable on 4 GB VRAM could not consistently
+produce valid tool arguments.
 
 The debugging order I use now is:
 
@@ -171,7 +167,10 @@ The debugging order I use now is:
 3. Measure KV cache size and GPU layer placement at the chosen context.
 4. Separate prompt-evaluation latency from generation speed.
 5. Verify tool execution success in logs, not in UI decoration.
-6. Stop tuning when the evidence points to a model-capability or memory ceiling.
+6. Check whether the remaining problem is model capability rather than another
+	timeout or context setting.
 
-Self-hosting on a consumer GPU worked. The important part was narrowing the
-claim: local chat worked well enough; reliable agentic monitoring did not.
+I kept Ollama with Vulkan as the default because it supports model management and
+normal local chat worked. llama.cpp with SYCL is available for comparison, but a
+faster backend does not make the small model better at producing schema-valid
+tool calls.

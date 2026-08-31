@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: How three Netdata collectors failed under systemd hardening on NixOS, and why each needed a different narrow exception
+date: "2026-08-10T00:00:00+05:30"
+description: Fixing Netdata SMART, ZFS and Traefik collectors after applying systemd restrictions on NixOS
 featured_image: ""
 tags:
 - guide
@@ -9,22 +9,18 @@ tags:
 - systemd
 - hardening
 - nixos
-title: Hardening Netdata Without Blinding It
-draft: true
+title: Running Netdata with systemd Hardening on NixOS
 ---
 
-A monitoring agent is an awkward process to sandbox. Its job is to observe
-things ordinary services should not touch: block devices, GPU nodes, kernel
-interfaces, storage control devices, local APIs, and other systemd units.
+I run Netdata as a native NixOS service and restrict its network and device
+access using systemd. After updating to Netdata 2.10.3, the dashboard worked but
+the SMART, ZFS pool and Traefik collectors did not create any charts.
 
-That does not justify giving it the whole host. It means every exception needs a
-collector attached to it.
+All three appeared as missing collectors in the UI, but each one had a different
+problem. Below are the settings I needed on NixOS while keeping the service
+restricted.
 
-I learned this while bringing up native Netdata 2.10.3 on NixOS. The service was
-running and the dashboard loaded, but SMART, ZFS pool, and Traefik charts were
-missing. All three appeared as "zero charts." Each had a different root cause.
-
-## The security boundary
+## Restricting network and device access
 
 The service could reach only the network ranges it actually used:
 
@@ -45,9 +41,10 @@ collector could read its render node:
 DeviceAllow = [ "/dev/dri/renderD128 rw" ];
 ```
 
-The second setting caused the first missing collector.
+Once `DeviceAllow` is set, all devices not listed there are denied. This caused
+the first collector failure.
 
-## Collector one: SMART failed despite running the helper as root
+## SMART collector could not open the disk
 
 Adding any `DeviceAllow` entry makes systemd's device policy deny-by-default.
 The render node was allowed; every unlisted block and character device was not.
@@ -80,10 +77,10 @@ flowchart LR
 		N -->|after explicit allow| ZFS["/dev/zfs accessible"]
 {{< /mermaid >}}
 
-This is why "but it runs as root" was the wrong debugging branch. The failure
-was below normal discretionary permissions.
+Running `smartctl` as root did not bypass this rule because the device cgroup
+applies to the complete Netdata service.
 
-## Collector two: ZFS assumed an FHS path
+## ZFS collector used `/usr/bin/zpool`
 
 After allowing `/dev/zfs`, the ZFS pool collector still registered nothing. Its
 initialization error was precise:
@@ -107,7 +104,7 @@ Now the collector could execute `zpool`, and the previous `/dev/zfs` exception
 allowed the command to reach the kernel module. Fixing only the path would have
 changed the failure from "not found" to a timeout or permission error.
 
-## Collector three: Traefik lost a startup race once
+## Traefik was not ready during the first check
 
 During the same activation, containerized Traefik was restarting. Netdata
 checked its metrics endpoint before it was ready and reported:
@@ -144,7 +141,7 @@ sequenceDiagram
 		Note over N: Collector registers charts
 {{< /mermaid >}}
 
-## Debug in layers, not by weakening the sandbox
+## How I checked each failure
 
 The three symptoms all looked like absent charts, but their evidence lived at
 different layers:
@@ -158,16 +155,14 @@ different layers:
 | Network filter | Can this cgroup reach the endpoint? | request from service context |
 | Lifecycle | Was the endpoint merely late? | retry succeeds without config change |
 
-My first impulse was to remove device restrictions and widen network access.
-That would have restored charts while erasing the reason for hardening the
-agent. Instead, each collector earned the smallest capability it needed:
+Instead of removing all restrictions, I added only what each collector needed:
 
 - one device-node allow entry;
 - one NixOS-native binary path;
 - one retry interval;
 - only the bridge ranges used for dashboard ingress and local notifications.
 
-The result is not a perfectly isolated monitoring process. Such a process could
-not monitor much. It is an auditable one: every opening names the chart or alert
-that would disappear without it, and every missing chart can be traced through
-the same layered checks.
+After these changes, SMART could read `/dev/sda`, ZFS used the NixOS `zpool`
+path and Traefik registered itself after its endpoint became ready. The useful
+check here is the go.d collector log; a working Netdata service and dashboard do
+not mean every configured collector started successfully.

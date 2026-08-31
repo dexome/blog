@@ -1,6 +1,6 @@
 ---
-date: "2026-08-29T00:00:00+05:30"
-description: What production taught me about Kestra config, OSS authentication, MQTT triggers, cooldowns, worker rendering, and retiring persistent flows
+date: "2026-06-26T00:00:00+05:30"
+description: Issues I fixed while moving my MQTT and notification workflows from n8n to Kestra
 featured_image: ""
 tags:
 - guide
@@ -8,27 +8,21 @@ tags:
 - orchestration
 - workflows
 - kestra
-title: Kestra in Production Is Mostly About State You Cannot See
-draft: true
+title: Running Kestra for My Home Automation Workflows
 ---
 
-The first Kestra flow I deployed was simple on paper: subscribe to a Frigate
-MQTT event, ignore zero values, enforce a two-minute cooldown, and send a camera
-snapshot through Apprise.
+I moved a few home automation workflows from n8n to Kestra. One of them listens
+for a Frigate MQTT event, applies a two-minute cooldown and sends a camera image
+through Apprise.
 
-That flow eventually worked. Getting there taught me more about hidden state
-than about YAML.
+The flow YAML was not the difficult part. I had issues with the non-root
+container configuration, OSS authentication, the MQTT trigger type, KV expiry
+and old realtime triggers which continued running after the flow was disabled.
 
-I hit configuration writes inside a non-root container, two independent login
-layers, a polling trigger that missed transient messages, missing output fields
-that threw instead of becoming null, a TTL that never expired, worker-side key
-normalization, and a disabled realtime trigger that survived database cleanup
-and JVM restarts.
+This post collects those fixes for Kestra 1.3.24 and 1.3.33. Some of these are
+version-specific, so validate them again when using a newer release.
 
-The common thread was that the visible flow definition was only one part of the
-running system.
-
-## Deploy the engine before trusting the flows
+## Running the Kestra container as a non-root user
 
 My Kestra 1.3.24 container ran as a dedicated host UID instead of the image's
 baked `kestra` user. The image entrypoint tried to materialize the
@@ -56,10 +50,11 @@ flowchart TB
 	E[Image entrypoint config writer] -. skipped .-> M
 {{< /mermaid >}}
 
-This is a general non-root container rule: inspect what the entrypoint writes,
-not only which user the application eventually runs as.
+When changing the container user, check files written by the entrypoint before
+the application starts. The final Kestra process user alone did not explain this
+failure.
 
-## Edge SSO did not replace application authentication
+## Pocket ID did not replace Kestra basic authentication
 
 Traefik already protected the Kestra route with Pocket ID forward auth. I
 expected that gate to be sufficient. Kestra OSS still presented a "create admin
@@ -84,7 +79,7 @@ An injected `Authorization` request header did not work because the SPA checked
 `document.cookie` before routing. Browser behavior, not just server behavior,
 was part of the auth contract.
 
-## Validate the exact version outside production
+## Validating flows with the pinned Kestra image
 
 Flow schemas and plugin properties move. I validate repository flows with the
 CLI from the pinned Kestra image before synchronizing them. The image's
@@ -93,10 +88,10 @@ CLI from the pinned Kestra image before synchronizing them. The image's
 `docker-entrypoint.sh flow validate ...` reproduced the image's normal shell
 fallback and worked.
 
-Local validation catches unknown task properties and malformed expressions. It
-does not prove lifecycle behavior. MQTT made that distinction painfully clear.
+This catches invalid properties and expressions, but it does not test how a
+long-running trigger behaves.
 
-## Polling MQTT was the wrong abstraction
+## Use `RealtimeTrigger` for MQTT events
 
 The first flow used `io.kestra.plugin.mqtt.Trigger`. Its name looked correct,
 but it polls: connect on an interval, collect messages, disconnect. Frigate's
@@ -132,7 +127,7 @@ sequenceDiagram
 	R->>R: task-level If reads trigger.payload
 {{< /mermaid >}}
 
-## Missing output fields are not null
+## Optional output fields need a default
 
 The cooldown began with a KV `Get` configured with `errorOnMissing: false`. I
 then checked:
@@ -153,7 +148,7 @@ Optional outputs need an explicit default:
 
 That fixed the exception and exposed the more serious cooldown problem.
 
-## A TTL presence check wedged the alert for hours
+## KV expiry did not work as a cooldown
 
 The flow set a KV key with `ttl: PT2M` and sent another alert only when the key
 was absent. After one notification, about 40 later events reached the check and
@@ -190,7 +185,7 @@ flowchart TB
 	SEND --> SET[Overwrite last alert epoch]
 {{< /mermaid >}}
 
-## Configuration rendered on the worker had different keys
+## `globals` key was changed on the worker
 
 I moved the MQTT broker address into `kestra.variables.globals.mqttBroker` and
 referenced `{{ globals.mqttBroker }}`. Every realtime trigger began failing
@@ -208,11 +203,11 @@ container: ENV_MQTT_BROKER=<single-sourced broker endpoint>
 flow:      {{ envs.mqtt_broker }}
 ```
 
-The lesson is not that globals are always bad. It is that values rendered by a
-worker or trigger must be tested in that execution context. UI previews and
-controller-side templates are not equivalent evidence.
+For values used by a worker or trigger, I now test the template in that execution
+context. A successful UI preview or controller-side render did not prove that the
+worker received the same key.
 
-## Disabled did not mean stopped
+## Disabled realtime flows continued to run
 
 The strangest incident arrived while replacing one realtime flow with another
 on Kestra 1.3.33. The old flow was marked `disabled: true`. It continued to
@@ -239,9 +234,9 @@ backlog, and the `worker_job_running` record, then restarting Kestra. Verificati
 meant checking that the old rows stayed absent while a retained flow on the same
 topic still received the next event.
 
-## What production changed
+## Checks I now use
 
-I no longer review a workflow only as a task graph. I review five contracts:
+For a new workflow, I check these separately:
 
 1. **Deployment:** can the image start under its real UID and mounted config?
 2. **Schema:** does the exact pinned engine accept the flow?
@@ -249,5 +244,8 @@ I no longer review a workflow only as a task graph. I review five contracts:
 4. **State:** what persists in KV, queues, registrations, and worker tables?
 5. **Lifecycle:** what does disable, delete, retry, restart, and reconcile actually do?
 
-Workflow engines make the happy path beautifully visible. Production work is
-learning where the invisible copies of that path live.
+The main issue was assuming that the flow YAML was the complete runtime state.
+Realtime subscriptions, queued executions and running worker records were stored
+in PostgreSQL and survived flow changes and Kestra restarts. When retiring a
+realtime flow, check those records and verify using a real MQTT message after the
+restart.
