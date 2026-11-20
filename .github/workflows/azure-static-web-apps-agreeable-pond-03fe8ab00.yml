@@ -45,6 +45,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - name: Set up Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: "0.165.0"
+          extended: true
+      - name: Build Hugo site
+        run: hugo --gc --minify --environment "$HUGO_ENV"
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
@@ -54,13 +61,11 @@ jobs:
           action: "upload"
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "/" # App source code path
+          app_location: "public" # Prebuilt Hugo site
           api_location: "api" # Api source code path - optional
-          output_location: "public" # Built app content directory - optional
-          app_build_command: 'hugo --gc --minify --environment "$HUGO_ENV"'
+          output_location: "" # app_location already contains the build output
+          skip_app_build: true
           ###### End of Repository/Build Configurations ######
-        env:
-          HUGO_VERSION: 0.165.0
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
