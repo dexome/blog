@@ -1,13 +1,18 @@
 # Theme previews
 
-Try alternative themes side-by-side without touching the live Stack setup.
-Each preview uses Hugo **module mounts** to load only `content/en` and `static`,
-while masking the project's Stack-specific `layouts/` with an empty directory —
-so the previewed theme renders with its *own* templates.
+The Congo notebook design is now the default site configuration. Its shared
+presentation remains under `preview/congo/` while this version is evaluated;
+Hugo module mounts keep the legacy Stack templates and assets out of both builds.
+
+The Congo design includes a curated homepage,
+topic reading paths, About page, full-text search, visible RSS links, and a
+wider article layout. Original post Markdown and page resources are unchanged.
+Comments and analytics are disabled in this preview, and pages are marked
+`noindex, nofollow`.
 
 ## Requirements
 
-- **Hugo extended >= 0.158.0** (Congo needs 0.158+, and both themes use the new
+- **Hugo extended >= 0.165.0** (the version used in CI; both themes use the new
   `_partials`/`_markup` layout lookup from Hugo 0.146+). The Ubuntu/apt Hugo is
   far too old. Install a current build to `~/.local/bin`:
 
@@ -32,7 +37,7 @@ git submodule update --init --recursive
 Congo:
 
 ```bash
-hugo server --config preview/congo.yml -D
+hugo server --config config.yml,preview/congo.yml --renderToMemory -D --port 1314
 ```
 
 Blowfish:
@@ -41,17 +46,51 @@ Blowfish:
 hugo server --config preview/blowfish.yml -D
 ```
 
-Both run against your existing `content/en/` posts. Your production build (Stack)
-is unaffected — it still uses the root `config.yml`.
+Both run against your existing `content/en/` posts. The Congo preview overlays
+the production `config.yml` with local URLs and disables comments and analytics,
+even when built with the production environment.
+Rendering the server in memory keeps local URLs out of `public/` and prevents
+separate builds or theme servers from overwriting the running preview.
+
+Open the Congo preview at http://localhost:1314. Useful pages to compare:
+
+- `/`: introduction, starting articles, topics, and recent writing
+- `/topics/`: ordered reading paths
+- `/post/shared-file-permissions-across-containers/`: article with code, tables,
+  diagram captions, and accessible diagram zoom controls
+- `/about/`: the notebook's purpose and subscription links
+
+Search is available in the header or with `/`. The existing `/page/search/`
+route also opens a search landing page; `/page/archives/` redirects to `/post/`.
+The feed and search index include articles only, not utility pages or tags.
+The appearance toggle is in the footer.
+
+### Editing the shared Congo presentation
+
+- `congo/content/`: homepage copy, section introduction, and utility pages
+- `congo/data/notebook.yml`: featured articles and ordered topic reading paths
+- `congo/layouts/`: homepage, article-list, and topics templates
+- `congo/assets/`: styling, diagrams, and production-only comments/analytics scripts
+
+These files are shared with production; use the local preview to review edits.
+The existing post Markdown, images, slugs, and heading anchors are retained.
+Congo reuses the production Mermaid shortcode markup, with its own bundled
+renderer and zoom dialog; it does not load the Stack templates or external
+Mermaid CDN script.
+
+To check a static build without overwriting production output:
+
+```bash
+hugo --config config.yml,preview/congo.yml --destination /tmp/dexome-congo-preview --panicOnWarning
+```
 
 ## 3. Notes
 
-- These preview configs are intentionally minimal — just enough to render posts.
-  Each theme has many more options (menus, homepage layout, appearance) you'd
-  flesh out if you decide to switch.
-- Switching themes for real means porting the Stack-specific `params` (widgets,
-  sidebar, colorScheme) in `config.yml` to the new theme's schema, and updating
-  `HUGO_VERSION` in the GitHub Actions workflow to >= 0.158.0.
+- The Blowfish config remains a standalone, minimal theme comparison; do not
+  combine it with the root Congo configuration.
+- Production is built from `config.yml` only. Do not include `preview/congo.yml`
+  in a deployment build: it intentionally prevents indexing and disables
+  comments and analytics.
 - To remove a theme you tried:
 
   ```bash

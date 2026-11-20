@@ -1,111 +1,101 @@
-name: The Dexome blog
-license: MIT
-licenselink: https://github.com/theNewDynamic/gohugo-theme-ananke/blob/master/LICENSE.md
-description: Notes from my experiments
-homepage: https://blog.dexome.com
-tags:
-  - website
-  - starter
-  - responsive
-  - Disqus
-  - blog
-  - Tachyons
-  - Multilingual
-  - Stackbit
-features:
-  - posts
-  - shortcodes
-  - related content
-  - comments
-min_version: 0.128.0
-theme: hugo-theme-stack
 baseURL: https://blog.dexome.com/
-languageCode: en-us
+locale: en-US
 defaultContentLanguage: en
+contentDir: content/en
+theme: congo
+title: Dexome
 enableRobotsTXT: true
+
+# Share the tested Congo presentation without loading the old Stack overrides.
+module:
+  mounts:
+    - source: content/en/post
+      target: content/post
+    - source: preview/congo/content
+      target: content
+    - source: static
+      target: static
+    - source: preview/congo/layouts
+      target: layouts
+    - source: layouts/shortcodes/mermaid.html
+      target: layouts/_shortcodes/mermaid.html
+    - source: preview/congo/assets
+      target: assets
+    - source: preview/congo/data
+      target: data
+
 minify:
   disableXML: true
   minifyOutput: true
-sectionPagesMenu: main
-languages:
-  en:
-    title: Dexome
-    weight: 1
-    contentDir: content/en
+
 pagination:
   pagerSize: 10
+
+outputs:
+  home:
+    - HTML
+    - RSS
+    - JSON
+
 sitemap:
   changefreq: weekly
   priority: 0.5
   filename: sitemap.xml
+
 params:
-  text_color: ""
-  author:
-    name: dexter
-    homepage: https://blog.dexome.com/
-    title: The Dexome blog
-    email: ""
-  favicon: ""
-  site_logo: /images/dexome.png
-  description: The notes from my experiments
-  background_color_class: bg-black
-  featured_image: ""
-  recent_posts_number: 2
-  colorScheme:
-    # Display toggle
-    toggle: true
-    # Available values: auto, light, dark
-    default: auto
-  imageProcessing:
-    cover:
-      enabled: true
-    content:
-      enabled: true
-  widgets:
-    homepage:
-      - type: search
-      - type: archives
-        params:
-          limit: 5
-      # - type: categories
-      #   params:
-      #     limit: 10
-      - type: tag-cloud
-        params:
-          limit: 10
-    page:
-      - type: toc
-  sidebar:
-    # emoji: 🕯️
-    subtitle: Notes from my experiments
-    avatar:
-      enabled: true
-      local: true
-      src: /images/gopher.png
-  dateFormat:
-    published: Jan 02, 2006
-    lastUpdated: Jan 02, 2006 15:04 MST
+  description: Practical notes on NixOS, containers, networking, and local AI. Real failures, working fixes, and the reasoning behind them.
+  colorScheme: avocado
+  defaultAppearance: light
+  autoSwitchAppearance: true
+  enableSearch: true
+  enableCodeCopy: true
+  dateFormat: 2 Jan 2006
+  mainSections:
+    - post
+  homepage:
+    layout: custom
+  header:
+    layout: basic
   footer:
-    since: 2022
-    customText:
+    showAppearanceSwitcher: true
   article:
-    math: false
-    toc: true
-    readingTime: true
+    showAuthor: false
+    showDateUpdated: true
+    showTableOfContents: true
+    showComments: true
     license:
       enabled: true
       default: Licensed under CC BY-NC-SA 4.0
+  list:
+    showSummary: true
+  author:
+    name: Jahan Arun J
+    links:
+      - github: https://github.com/jahanarun
+      - linkedin: https://www.linkedin.com/in/jahanarun
+  analytics:
+    enabled: true
   comments:
     enabled: true
-    provider: utterances
-    utterances:
-      repo: "jahanarun/blog"
-      issueTerm: "title"
-      label: "utterance"
+    provider: giscus
+    giscus:
+      repo: "dexome/blog"
+      repoID: "R_kgDOGoNOmQ"
+      category: "Announcements"
+      categoryID: "DIC_kwDOGoNOmc4DLkhR"
+      # Match the article title without Congo's browser-title suffix.
+      mapping: "specific"
+      strict: 0
+      lightTheme: "light"
+      darkTheme: "dark_dimmed"
+      reactionsEnabled: 1
+      emitMetadata: 0
+      inputPosition: "top"
+      lang: "en"
+
 markup:
   goldmark:
     renderer:
-      ## Set to true if you have HTML content inside Markdown
       unsafe: true
   tableOfContents:
     endLevel: 4
@@ -115,48 +105,34 @@ markup:
     noClasses: false
     codeFences: true
     guessSyntax: true
-    lineNoStart: 1
-    lineNos: true
-    lineNumbersInTable: true
     tabWidth: 4
-  # highlight:
-  #   codeFences: true
-  #   guessSyntax: false
-  #   hl_Lines: ""
-  #   lineNoStart: 1
-  #   lineNos: false
-  #   lineNumbersInTable: true
-  #   noClasses: false
-  #   style: monokai  # looks like this has no effect, only imported CSS matters
-  #   tabWidth: 4
-related:
-  includeNewer: true
-  threshold: 60
-  toLower: false
-  indices:
-    - name: tags
-      weight: 100
 
-    - name: categories
-      weight: 200
-menu:
+menus:
   main:
-  - identifier: home
-    name: Home
-    url: /
-    weight: -100
-    params:
-      icon: home
-      newTab: true
-
-  social:
-    - identifier: github
-      name: GitHub
+    - name: Writing
+      pageRef: /post
+      weight: 10
+    - name: Topics
+      pageRef: /topics
+      weight: 20
+    - name: About
+      pageRef: /about
+      weight: 30
+    - name: RSS
+      url: /index.xml
+      weight: 40
+    - name: Search
+      identifier: search
+      weight: 50
+      params:
+        action: search
+  footer:
+    - name: GitHub
       url: https://github.com/jahanarun
-      params:
-        icon: brand-github
-    - identifier: linkedin
-      name: LinkedIn
+      weight: 10
+    - name: LinkedIn
       url: https://www.linkedin.com/in/jahanarun
-      params:
-        icon: brand-linkedin
+      weight: 20
+    - name: RSS
+      url: /index.xml
+      weight: 30

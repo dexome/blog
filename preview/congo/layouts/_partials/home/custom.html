@@ -1,0 +1,58 @@
+<div class="notebook-home">
+  <header class="notebook-intro">
+    <p class="notebook-eyebrow">Dexome / An engineering notebook</p>
+    <h1>{{ .Params.headline }}</h1>
+    <div class="notebook-lead">{{ .Content }}</div>
+    <div class="notebook-actions">
+      <a class="notebook-button" href="{{ "topics/" | relURL }}">Find your next read <span aria-hidden="true">&rarr;</span></a>
+      <a href="{{ "index.xml" | relURL }}">Subscribe via RSS <span aria-hidden="true">&nearr;</span></a>
+    </div>
+  </header>
+
+  <section class="notebook-section" aria-labelledby="start-here">
+    <div class="notebook-section-heading">
+      <h2 id="start-here">Start here</h2>
+      <p>Three ways into the notebook.</p>
+    </div>
+    <div class="notebook-featured">
+      {{ range $index, $entry := hugo.Data.notebook.featured }}
+        {{ with $.Site.GetPage $entry.path }}
+          <article>
+            <p class="notebook-eyebrow">0{{ add $index 1 }} / {{ $entry.label }}</p>
+            <h3><a href="{{ .RelPermalink }}">{{ .Title }}</a></h3>
+            <p>{{ .Description }}</p>
+            <span class="notebook-meta">{{ .ReadingTime }} min read</span>
+          </article>
+        {{ else }}
+          {{ errorf "Featured article not found: %s" $entry.path }}
+        {{ end }}
+      {{ end }}
+    </div>
+  </section>
+
+  <section class="notebook-section" aria-labelledby="explore-topics">
+    <div class="notebook-section-heading">
+      <h2 id="explore-topics">Explore by topic</h2>
+      <a href="{{ "topics/" | relURL }}">All reading paths <span aria-hidden="true">&rarr;</span></a>
+    </div>
+    <div class="notebook-topics">
+      {{ range hugo.Data.notebook.topics }}
+        <a href="{{ "topics/" | relURL }}#{{ .id }}">
+          <span class="notebook-topic-title">{{ .title }} <span aria-hidden="true">&rarr;</span></span>
+          <span>{{ .description }}</span>
+          <span class="notebook-meta">{{ len .posts }} articles</span>
+        </a>
+      {{ end }}
+    </div>
+  </section>
+
+  <section class="notebook-section" aria-labelledby="latest-writing">
+    <div class="notebook-section-heading">
+      <h2 id="latest-writing">Latest writing</h2>
+      <a href="{{ "post/" | relURL }}">All articles <span aria-hidden="true">&rarr;</span></a>
+    </div>
+    {{ range first 6 (where .Site.RegularPages "Section" "post").ByDate.Reverse }}
+      {{ partial "article-link.html" . }}
+    {{ end }}
+  </section>
+</div>

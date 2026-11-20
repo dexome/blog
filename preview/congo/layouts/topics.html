@@ -1,0 +1,29 @@
+{{ define "main" }}
+  <header class="notebook-page-heading">
+    <p class="notebook-eyebrow">Reading paths</p>
+    <h1>{{ .Title }}</h1>
+    <div class="notebook-lead">{{ .Content }}</div>
+  </header>
+  <nav class="notebook-topic-nav" aria-label="Reading paths">
+    {{ range hugo.Data.notebook.topics }}
+      <a href="#{{ .id }}">{{ .title }}</a>
+    {{ end }}
+  </nav>
+  {{ range hugo.Data.notebook.topics }}
+    <section class="notebook-section notebook-reading-path" aria-labelledby="{{ .id }}">
+      <h2 id="{{ .id }}">{{ .title }}</h2>
+      <p>{{ .description }}</p>
+      <ol>
+        {{ range .posts }}
+          <li>
+            {{ with $.Site.GetPage . }}
+              {{ partial "article-link.html" . }}
+            {{ else }}
+              {{ errorf "Reading-path article not found: %s" . }}
+            {{ end }}
+          </li>
+        {{ end }}
+      </ol>
+    </section>
+  {{ end }}
+{{ end }}

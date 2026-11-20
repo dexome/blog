@@ -1,0 +1,5 @@
+<article class="notebook-entry">
+  <h3><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ if .Draft }} {{ partial "badge.html" (i18n "article.draft") }}{{ end }}</h3>
+  <p>{{ .Description }}</p>
+  <div class="notebook-meta">{{ partial "article-meta.html" . }}</div>
+</article>
