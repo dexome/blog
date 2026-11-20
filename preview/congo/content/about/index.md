@@ -4,6 +4,7 @@ description: Jahan Arun J's working notebook on software, homelab experiments, a
 showDate: false
 showReadingTime: false
 showTableOfContents: false
+showComments: false
 ---
 I'm **Jahan Arun J**. I build software, run a homelab, and write down the
 lessons I don't want to learn twice. Dexome is that working notebook.

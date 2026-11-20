@@ -1,0 +1,7 @@
+{{- if and .IsPage (eq .Section "post") .Site.Params.article.license.enabled }}
+  <p class="notebook-meta">{{ .Params.license | default .Site.Params.article.license.default | markdownify }}</p>
+{{- end }}
+{{- if and hugo.IsProduction .Site.Params.analytics.enabled }}
+  {{- $analytics := resources.Get "js/analytics.js" | minify | fingerprint "sha256" }}
+  <script defer src="{{ $analytics.RelPermalink }}" integrity="{{ $analytics.Data.Integrity }}"></script>
+{{- end }}
