@@ -78,6 +78,10 @@ Congo reuses the production Mermaid shortcode markup, with its own bundled
 renderer and zoom dialog; it does not load the Stack templates or external
 Mermaid CDN script.
 
+Diagram labels use native SVG text to avoid Mermaid's HTML-label clipping at
+non-default browser zoom levels. When changing diagram rendering, check the HA
+topology at 100%, 125%, and 150% zoom, including the expanded view.
+
 To check a static build without overwriting production output:
 
 ```bash

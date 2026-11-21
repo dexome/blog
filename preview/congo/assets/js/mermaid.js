@@ -6,6 +6,8 @@
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
+    // HTML labels can be clipped when Mermaid measures them under browser zoom.
+    htmlLabels: false,
     theme: "base",
     themeVariables: {
       primaryColor: color(dark ? "--color-primary-900" : "--color-primary-100"),
