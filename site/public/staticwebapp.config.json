@@ -1,20 +1,11 @@
 {
   "routes": [
-    { "route": "/page/archives", "redirect": "/post/", "statusCode": 301 },
-    { "route": "/page/archives/", "redirect": "/post/", "statusCode": 301 },
-    { "route": "/page/search", "redirect": "/search/", "statusCode": 301 },
-    { "route": "/page/search/", "redirect": "/search/", "statusCode": 301 },
-    { "route": "/page/2", "redirect": "/post/2/", "statusCode": 301 },
-    { "route": "/page/2/", "redirect": "/post/2/", "statusCode": 301 },
-    { "route": "/post/page/2", "redirect": "/post/2/", "statusCode": 301 },
-    { "route": "/post/page/2/", "redirect": "/post/2/", "statusCode": 301 },
+    { "route": "/page/archives/*", "redirect": "/post/", "statusCode": 301 },
+    { "route": "/page/search/*", "redirect": "/search/", "statusCode": 301 },
+    { "route": "/page/2/*", "redirect": "/post/2/", "statusCode": 301 },
+    { "route": "/post/page/2/*", "redirect": "/post/2/", "statusCode": 301 },
     {
-      "route": "/tags/guide/page/2",
-      "redirect": "/tags/guide/2/",
-      "statusCode": 301
-    },
-    {
-      "route": "/tags/guide/page/2/",
+      "route": "/tags/guide/page/2/*",
       "redirect": "/tags/guide/2/",
       "statusCode": 301
     }
