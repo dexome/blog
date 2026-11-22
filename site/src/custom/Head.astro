@@ -1,0 +1,37 @@
+---
+// Rendered in <head> on every page, after the theme's own tags. Add
+// your own tags here: analytics, site verification, extra <meta> or
+// <link>, stylesheets. This file is yours: AstroPaper never changes it
+// after release.
+type Props = {
+  title: string;
+  description: string;
+};
+import "../../../preview/shared/diagrams.css";
+---
+
+{
+  import.meta.env.MODE !== "production" && (
+    <meta name="robots" content="noindex, nofollow" />
+  )
+}
+<style is:global>
+  :root {
+    --notebook-bg: var(--background);
+    --notebook-text: var(--foreground);
+    --notebook-muted: var(--muted-foreground);
+    --notebook-accent: var(--accent);
+    --notebook-line: var(--border);
+    --notebook-surface: var(--muted);
+    --color-neutral: 253, 253, 253;
+    --color-neutral-100: 245, 245, 244;
+    --color-neutral-300: 212, 212, 216;
+    --color-neutral-600: 82, 82, 91;
+    --color-neutral-700: 63, 63, 70;
+    --color-neutral-800: 33, 39, 55;
+    --color-neutral-900: 28, 25, 23;
+    --color-primary-100: 224, 242, 254;
+    --color-primary-500: 14, 165, 233;
+    --color-primary-900: 27, 65, 91;
+  }
+</style>

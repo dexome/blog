@@ -39,19 +39,31 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     env:
-      HUGO_ENV: ${{ github.event_name == 'push' && 'production' || 'preview' }}
+      BUILD_SCRIPT: ${{ github.event_name == 'push' && 'build' || 'build:preview' }}
+      ASTRO_TELEMETRY_DISABLED: "1"
     name: Build and Deploy Job
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Set up Hugo
-        uses: peaceiris/actions-hugo@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
         with:
-          hugo-version: "0.165.0"
-          extended: true
-      - name: Build Hugo site
-        run: hugo --gc --minify --environment "$HUGO_ENV"
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+      - name: Test content adaptation
+        working-directory: site
+        run: npm test
+      - name: Audit site dependencies
+        working-directory: site
+        run: npm audit --audit-level=moderate
+      - name: Build AstroPaper site
+        working-directory: site
+        run: npm run "$BUILD_SCRIPT"
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
@@ -61,7 +73,7 @@ jobs:
           action: "upload"
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
-          app_location: "public" # Prebuilt Hugo site
+          app_location: ${{ github.event_name == 'push' && 'site/dist' || 'site/dist-preview' }}
           api_location: "api" # Api source code path - optional
           output_location: "" # app_location already contains the build output
           skip_app_build: true

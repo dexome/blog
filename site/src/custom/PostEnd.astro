@@ -1,0 +1,21 @@
+---
+// Rendered on each post page, after the share links and before the
+// previous/next links. Add comments, a newsletter form or an author bio
+// here; use `post` to skip some posts. This file is yours: AstroPaper
+// never changes it after release.
+import type { CollectionEntry } from "astro:content";
+import GiscusComments from "@/components/GiscusComments.astro";
+import { SITE_FEATURES } from "@/astro-paper.config";
+
+type Props = {
+  post: CollectionEntry<"posts">;
+};
+const { post } = Astro.props;
+---
+
+<p class="text-muted-foreground my-6 text-sm">{SITE_FEATURES.articleLicense}</p>
+{
+  import.meta.env.MODE === "production" && SITE_FEATURES.comments.enabled && (
+    <GiscusComments term={post.data.title} />
+  )
+}

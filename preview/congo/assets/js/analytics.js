@@ -1,8 +1,11 @@
 (() => {
+  const script = document.currentScript;
   const payload = JSON.stringify({
     path: location.pathname + location.search,
     title: document.title,
-    referrer: document.referrer,
+    referrer: script && script.dataset.referrer !== undefined
+      ? script.dataset.referrer
+      : document.referrer,
   });
   if (navigator.sendBeacon &&
       navigator.sendBeacon("/api/track", new Blob([payload], { type: "application/json" }))) {

@@ -1,0 +1,78 @@
+---
+import { SITE_FEATURES } from "@/astro-paper.config";
+
+type Props = { term: string };
+const { term } = Astro.props;
+const comments = SITE_FEATURES.comments;
+if (
+  !comments.repo ||
+  !comments.repoId ||
+  !comments.categoryId ||
+  comments.repoId.startsWith("REPLACE_") ||
+  comments.categoryId.startsWith("REPLACE_")
+) {
+  throw new Error(
+    "Giscus requires a repository, repository ID, and discussion category ID."
+  );
+}
+---
+
+<section aria-label="Article comments" class="my-8">
+  <template id="article-comments-template">
+    <giscus-widget
+      id="article-comments"
+      repo={comments.repo}
+      repoid={comments.repoId}
+      category={comments.category}
+      categoryid={comments.categoryId}
+      mapping="specific"
+      term={term}
+      reactionsenabled="1"
+      emitmetadata="0"
+      inputposition="top"
+      theme="preferred_color_scheme"
+      lang="en"
+      loading="lazy"
+      data-light-theme={comments.lightTheme}
+      data-dark-theme={comments.darkTheme}></giscus-widget>
+  </template>
+  <p class="text-muted-foreground mt-3 text-sm">
+    <a href={`https://github.com/${comments.repo}/discussions`}
+      >View discussions on GitHub.</a
+    >
+  </p>
+  <noscript>Comments require JavaScript.</noscript>
+</section>
+
+<script>
+  import "giscus";
+
+  let observer: MutationObserver | undefined;
+  const mountComments = () => {
+    observer?.disconnect();
+    const template = document.querySelector<HTMLTemplateElement>(
+      "#article-comments-template"
+    );
+    if (!template) return;
+    // Giscus reads the current URL; wait until Astro has completed navigation.
+    template.replaceWith(template.content.cloneNode(true));
+    const widget = document.querySelector("giscus-widget");
+    if (!widget) throw new Error("The Giscus widget could not be initialized.");
+    const updateTheme = () => {
+      const theme = document.documentElement.classList.contains("dark")
+        ? widget.getAttribute("data-dark-theme")
+        : widget.getAttribute("data-light-theme");
+      if (!theme)
+        throw new Error("Giscus appearance themes are not configured.");
+      widget.setAttribute("theme", theme);
+    };
+    updateTheme();
+    observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  };
+  document.addEventListener("astro:page-load", mountComments);
+  document.addEventListener("astro:before-swap", () => observer?.disconnect());
+</script>
