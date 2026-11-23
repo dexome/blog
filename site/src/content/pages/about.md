@@ -1,48 +1,47 @@
 ---
-title: About Dexome
-description: Jahan Arun J's working notebook on software, homelab experiments, and the reasoning behind the fixes.
+title: About this blog
+description: Notes from Jahan Arun J on building software, tinkering with a homelab, and figuring things out.
 ---
-I'm **Jahan Arun J**. I build software, run a homelab, and write down the
-lessons I don't want to learn twice. Dexome is that working notebook.
+Hey, I'm **Jahan Arun J**. I build software, tinker with a homelab, and keep
+notes so I don't have to figure out the same thing twice. That's pretty
+much what this blog is.
 
-Most posts begin with something that needs figuring out: a container that
-cannot reach its backend, a firewall migration that must keep the WAN
-reachable, or a language model that needs to fit on a small GPU.
+Most posts start with something that isn't quite working: a container
+that can't reach its backend, a firewall migration where I need to keep
+the internet up, or a language model that has to fit on a small GPU.
 
-The interesting part isn't just the configuration that finally works.
-It's understanding why the first attempt didn't, which evidence changed
-the diagnosis, and how to tell whether the fix actually holds.
+I like figuring out why things broke, not just finding a config that
+works. So I write about the failed attempts too, what helped me work out
+the problem, and how I checked that the fix actually stuck.
 
-## What you'll find here
+## What I write about
 
-- **Networking:** declarative configuration, firewall migrations, and
-  failover. Start with [testing firewall high availability](/post/ha-firewall-carp-state-sync/).
-- **NixOS and containers:** services, runtimes, storage, and the permissions
-  between them. Start with [the gotchas in moving from Docker to Podman](/post/docker-to-podman-migration-gotchas/).
-- **Local AI:** useful models on modest hardware and practical workflows
-  for coding agents. Start with [self-hosting language models on consumer GPUs](/post/self-hosting-llms-consumer-gpus/).
-- **Engineering practices:** automation, operational lessons, and notes
-  worth returning to. Start with [writing postmortems for your future self](/post/operational-postmortems-future-self/).
+- **Networking:** configuring things, swapping firewalls, and keeping
+  connections alive when something goes down. Try [testing firewall high availability](/post/ha-firewall-carp-state-sync/).
+- **NixOS and containers:** getting services, runtimes, storage, and
+  permissions to play nicely together. Try [the gotchas in moving from Docker to Podman](/post/docker-to-podman-migration-gotchas/).
+- **Local AI:** running useful models without huge GPUs, plus working
+  with coding agents. Try [self-hosting language models on consumer GPUs](/post/self-hosting-llms-consumer-gpus/).
+- **Engineering practices:** automating the boring bits and keeping
+  notes for next time. Try [writing postmortems for your future self](/post/operational-postmortems-future-self/).
 
-## How to read these notes
+## A quick heads-up
 
-I aim to preserve enough context to make the reasoning useful: the goal,
-the constraints, what failed, what changed, and how I checked the result.
-Commands and configuration snippets are part of the explanation, not a
-substitute for it.
+I try to leave enough context that the notes make sense later: what I
+was trying to do, what got in the way, what I changed, and how I tested
+it. The commands and configs are there, but so is the thinking behind them.
 
-These are field notes from my environment, not universal recipes.
-Hardware, versions, and network layouts matter. Use the investigation to
-guide your own checks rather than assuming the same configuration will
-behave identically everywhere.
+This is what worked in my setup, not a promise that it'll work in yours.
+Hardware, versions, and network layouts can change things. Hopefully the
+notes help you figure out what to check, even if your fix looks different.
 
-For a guided route through the posts, [choose a topic and reading path](/topics/).
-To explore at your own pace, [browse all the writing](/post/).
+Not sure where to start? [Pick a topic](/topics/) for a suggested reading
+order, or just [browse all the posts](/post/).
 
-## Keep in touch
+## Say hello
 
-Have a correction, a question, or a different result from trying something
-here? Find me on [GitHub](https://github.com/jahanarun) or
+Spotted a mistake, have a question, or tried something here and got a
+different result? You can find me on [GitHub](https://github.com/jahanarun) or
 [LinkedIn](https://www.linkedin.com/in/jahanarun).
 
-To follow new posts in your feed reader, [subscribe via RSS](/index.xml).
+If you use a feed reader, [RSS is here](/index.xml).
