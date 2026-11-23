@@ -7,6 +7,8 @@ function getPostPathSegments(filePath: string | undefined): string[] {
   return (
     filePath
       ?.replace(BLOG_PATH, "")
+      // A post folder's index.md is the post itself, not a nested section.
+      .replace(/\/[^/]+\/index\.mdx?$/, "/index.md")
       .split("/")
       .filter(path => path !== "")
       .filter(path => !path.startsWith("_"))

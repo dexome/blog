@@ -44,8 +44,6 @@ jobs:
     name: Build and Deploy Job
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
@@ -55,7 +53,7 @@ jobs:
       - name: Install site dependencies
         working-directory: site
         run: npm ci
-      - name: Test content adaptation
+      - name: Test Markdown extensions
         working-directory: site
         run: npm test
       - name: Audit site dependencies

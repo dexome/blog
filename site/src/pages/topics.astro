@@ -5,28 +5,28 @@ import Header from "@/components/Header.astro";
 import Footer from "@/components/Footer.astro";
 import Card from "@/components/Card.astro";
 import config from "@/config";
-import notebook from "@/content/dexome/notebook.json";
+import { topics as readingPaths, topicsPage } from "@/data/notebook";
 import { getSortedPosts } from "@/utils/getSortedPosts";
 
 const posts = getSortedPosts(await getCollection("posts"));
-const topics = notebook.topics.map(topic => ({
+const topics = readingPaths.map(topic => ({
   ...topic,
-  entries: topic.posts.map(path => {
-    const post = posts.find(post => post.id === path.split("/").at(-1));
-    if (!post) throw new Error(`Reading-path article not found: ${path}`);
+  entries: topic.posts.map(slug => {
+    const post = posts.find(post => post.id === slug);
+    if (!post) throw new Error(`Reading-path article not found: ${slug}`);
     return post;
   }),
 }));
 ---
 
 <Layout
-  title={`${notebook.topicsPage.title} | ${config.site.title}`}
-  description={notebook.topicsPage.description}
+  title={`${topicsPage.title} | ${config.site.title}`}
+  description={topicsPage.description}
 >
   <Header />
   <main id="main-content" class="app-layout my-8">
-    <h1 class="text-accent text-3xl font-bold">{notebook.topicsPage.title}</h1>
-    <p class="mt-4">{notebook.topicsPage.body}</p>
+    <h1 class="text-accent text-3xl font-bold">{topicsPage.title}</h1>
+    <p class="mt-4">{topicsPage.body}</p>
     <nav
       aria-label="Reading paths"
       class="text-accent my-6 flex flex-wrap gap-4"

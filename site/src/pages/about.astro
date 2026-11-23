@@ -10,9 +10,7 @@ import config from "@/config";
 const about = await getEntry("pages", "about");
 
 if (!about) {
-  throw new Error(
-    "Missing About page: run `npm run sync:content` and check `preview/congo/content/about/index.md`."
-  );
+  throw new Error("Missing About page: `src/content/pages/about.md`.");
 }
 
 const { Content } = await render(about);

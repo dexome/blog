@@ -12,7 +12,7 @@ import LinkButton from "@/components/LinkButton.astro";
 import { getSortedPosts } from "@/utils/getSortedPosts";
 import { useTranslations } from "@/i18n";
 import config from "@/config";
-import notebook from "@/content/dexome/notebook.json";
+import { featured, home, topics } from "@/data/notebook";
 
 const { socials, posts: postsConfig } = config;
 
@@ -21,11 +21,9 @@ const t = useTranslations(locale);
 
 const posts = await getCollection("posts");
 const sortedPosts = getSortedPosts(posts);
-const featuredPosts = notebook.featured.map(entry => {
-  const post = sortedPosts.find(
-    post => post.id === entry.path.split("/").at(-1)
-  );
-  if (!post) throw new Error(`Featured article not found: ${entry.path}`);
+const featuredPosts = featured.map(slug => {
+  const post = sortedPosts.find(post => post.id === slug);
+  if (!post) throw new Error(`Featured article not found: ${slug}`);
   return post;
 });
 const recentPosts = sortedPosts;
@@ -42,7 +40,7 @@ const homePath = getRelativeLocaleUrl(locale, "");
   >
     <section id="hero" class="border-border border-b pt-8 pb-6">
       <h1 class="my-4 inline-block text-4xl font-bold sm:my-8 sm:text-5xl">
-        {notebook.home.headline}
+        {home.headline}
       </h1>{" "}
       <a
         href={`${import.meta.env.BASE_URL.replace(/\/?$/, "/")}rss.xml`}
@@ -59,7 +57,7 @@ const homePath = getRelativeLocaleUrl(locale, "");
       </a>
 
       <p>
-        {notebook.home.body}
+        {home.body}
       </p>
       <p class="mt-2">
         New here?{" "}
@@ -111,7 +109,7 @@ const homePath = getRelativeLocaleUrl(locale, "");
       </h2>
       <div class="mt-6 grid gap-4 sm:grid-cols-2">
         {
-          notebook.topics.map(topic => (
+          topics.map(topic => (
             <a
               href={`/topics/#${topic.id}`}
               class="border-border hover:border-accent flex flex-col gap-2 rounded border p-4"
@@ -135,7 +133,7 @@ const homePath = getRelativeLocaleUrl(locale, "");
             {recentPosts.slice(0, postsConfig.perIndex).map(data => (
               <Card
                 variant="h3"
-                transitionPrefix={data.data.featured ? "recent-" : ""}
+                transitionPrefix={featured.includes(data.id) ? "recent-" : ""}
                 {...data}
               />
             ))}

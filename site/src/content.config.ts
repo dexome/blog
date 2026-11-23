@@ -3,10 +3,15 @@ import { z } from "astro/zod";
 import { glob } from "astro/loaders";
 import config from "@/config";
 
-export const BLOG_PATH = "src/content/dexome/posts";
+export const BLOG_PATH = "src/content/posts";
 
 const posts = defineCollection({
-  loader: glob({ pattern: "**/[^_]*.{md,mdx}", base: `./${BLOG_PATH}` }),
+  loader: glob({
+    pattern: "**/[^_]*.{md,mdx}",
+    base: `./${BLOG_PATH}`,
+    // Each post is a folder (<slug>/index.md) with its images beside it.
+    generateId: ({ entry }) => entry.replace(/(\/index)?\.mdx?$/, ""),
+  }),
   schema: ({ image }) =>
     z.object({
       author: z.string().default(config.site.author),
@@ -32,7 +37,7 @@ const posts = defineCollection({
 const pages = defineCollection({
   loader: glob({
     pattern: "**/[^_]*.{md,mdx}",
-    base: "./src/content/dexome/pages",
+    base: "./src/content/pages",
   }),
   schema: z.object({
     title: z.string(),

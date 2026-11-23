@@ -21,8 +21,7 @@ import {
   rehypeInlineToc,
 } from "./src/utils/rehypeInlineToc";
 import config from "./astro-paper.config";
-import { fileURLToPath } from "node:url";
-import { hugoMarkdown } from "./src/utils/hugo-markdown";
+import { markdownExtensions } from "./src/utils/markdownExtensions";
 
 export default defineConfig({
   site: process.env.SITE_URL ?? config.site.url,
@@ -61,7 +60,7 @@ export default defineConfig({
     // stay in package.json so a customised config importing them still builds,
     // and are removed in v8.
     processor: unified({
-      remarkPlugins: [hugoMarkdown],
+      remarkPlugins: [markdownExtensions],
       rehypePlugins: [
         rehypeHeadingIds,
         rehypeInlineToc,
@@ -83,18 +82,6 @@ export default defineConfig({
   },
   vite: {
     plugins: [tailwindcss()],
-    server: {
-      fs: {
-        allow: [
-          fileURLToPath(new URL(".", import.meta.url)),
-          fileURLToPath(new URL("../preview/shared", import.meta.url)),
-          fileURLToPath(new URL("../preview/congo/assets", import.meta.url)),
-          fileURLToPath(
-            new URL("../themes/congo/assets/lib/mermaid", import.meta.url)
-          ),
-        ],
-      },
-    },
   },
   fonts: [
     {

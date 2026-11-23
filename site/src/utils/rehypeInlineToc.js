@@ -99,7 +99,7 @@ export const rehypeInlineToc =
     });
   };
 
-const POSTS_DIR = "src/content/dexome/posts/";
+const POSTS_DIR = "src/content/posts/";
 const ATX_HEADING = /^ {0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 

@@ -3,9 +3,9 @@
 ---
 
 <script>
-  import libraryUrl from "../../../themes/congo/assets/lib/mermaid/mermaid.min.js?url";
-  import rendererUrl from "../../../preview/congo/assets/js/mermaid.js?url";
-  import analyticsUrl from "../../../preview/congo/assets/js/analytics.js?url";
+  import libraryUrl from "mermaid/dist/mermaid.min.js?url";
+  import rendererUrl from "@/scripts/mermaid-renderer.js?url";
+  import analyticsUrl from "@/scripts/analytics.js?url";
   import { SITE_FEATURES } from "@/astro-paper.config";
 
   let library: Promise<void> | undefined;
